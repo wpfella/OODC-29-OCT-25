@@ -200,11 +200,15 @@ const Tab_DebtRecycling: React.FC<Props> = ({ appState, setAppState, calculation
                         <p className="text-4xl font-bold my-2 text-[var(--chart-color-wealth)]">{formatCurrency(debtRecyclingCalculation.finalInvestmentPortfolioValue)}</p>
                     </div>
                      <div className="p-4 bg-black/10 dark:bg-white/5 rounded-lg space-y-2">
-                        <h4 className="text-base text-[var(--text-color-muted)]">Net Position at Payoff</h4>
+                        <div className="flex items-center justify-center gap-1">
+                           <h4 className="text-base text-[var(--text-color-muted)]">Net Position at Payoff</h4>
+                           <Tooltip text="CALCULATION: Portfolio Value - Investment Loan Balance. This is your net gain from the investment strategy at the moment your home loan is paid off.">
+                               <InfoIcon className="h-4 w-4" />
+                           </Tooltip>
+                        </div>
                         <p className="text-4xl font-bold my-2 text-[var(--chart-color-wealth)]">
                             {formatCurrency(debtRecyclingCalculation.finalInvestmentPortfolioValue - debtRecyclingCalculation.finalInvestmentLoanBalance)}
                         </p>
-                        <p className="text-xs text-[var(--text-color-muted)]">(Portfolio Value - Investment Loan)</p>
                     </div>
                 </div>
             )

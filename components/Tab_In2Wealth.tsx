@@ -119,13 +119,13 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
       bankLoanCalculation, 
       crownMoneyLoanCalculation, 
       retirementWealthProjection, 
-      getMonthlyAmount, 
       netWorthProjection,
       homeValueAtRetirement,
       bankDebtAtRetirement,
       bankEquityAtRetirement,
       bankCashAvailableAtRetirement,
       totalBankNetPositionAtRetirement,
+      surplus,
   } = calculations;
   
   const isBankLoanValid = bankLoanCalculation.termInYears !== Infinity;
@@ -156,7 +156,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
     setAppState(prev => ({ ...prev, [field]: value }));
   };
 
-  const monthlySavings = getMonthlyAmount(appState.loan.repayment, appState.loan.frequency);
+  const monthlySavings = surplus;
   const monthlyInvestment = monthlySavings * (appState.investmentAmountPercentage / 100);
   const monthlyCashInHand = monthlySavings - monthlyInvestment;
   
@@ -167,7 +167,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
   const quickPercentages = [25, 50, 75, 100];
   
   const yearsSaved = bankLoanCalculation.termInYears - crownMoneyLoanCalculation.termInYears;
-  const weeklySavings = monthlySavings / 4.3333;
+  const weeklySavings = (monthlySavings * 12) / 52;
   const annualSavings = monthlySavings * 12;
   const totalPotentialInvestment = annualSavings * yearsSaved;
 
@@ -219,9 +219,14 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
             />
          </div>
          <div className="mb-6 p-4 border border-dashed border-[var(--border-color)] rounded-lg">
-            <h4 className="font-semibold text-[var(--title-color)] text-center mb-3">Your Investment Power with Crown Money</h4>
+            <div className="flex items-center justify-center gap-1">
+                <h4 className="font-semibold text-[var(--title-color)] text-center mb-3">Your Investment Power</h4>
+                 <Tooltip text="This is your total monthly surplus (Income - Expenses) that becomes available for investing once your loan is paid off with the Crown Money strategy.">
+                    <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)] -translate-y-1.5"/>
+                </Tooltip>
+            </div>
             <p className="text-center text-sm text-[var(--text-color-muted)] mb-4">
-                By paying off your loan {yearsSaved.toFixed(1)} years earlier, your original mortgage repayment becomes free cash. This is the amount you can now invest.
+                By paying off your loan {yearsSaved.toFixed(1)} years earlier, your entire monthly surplus becomes free cash. This is the amount you can now invest.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                 <div className="p-2 bg-black/10 dark:bg-white/5 rounded-lg">
@@ -241,7 +246,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
                     <p className="font-bold text-lg text-[var(--text-color)]">{formatCurrency(totalPotentialInvestment)}</p>
                 </div>
             </div>
-             <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Your 'Investment Power' is your original monthly mortgage repayment, which is now available for investing once the loan is paid off.</p>
+             <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Your 'Investment Power' is your monthly surplus (Total Income - Living Expenses), which is available for investing once the loan is paid off.</p>
         </div>
         <div className="space-y-6">
             <div>
@@ -252,7 +257,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
                 min={0} max={100} step={1} unit="%"
                 />
                 <p className="text-center text-xs text-[var(--text-color-muted)] mt-2">
-                    Select what percentage of your freed-up mortgage repayments ({formatCurrency(monthlySavings)}/month) you would like to invest.
+                    Select what percentage of your freed-up monthly surplus ({formatCurrency(monthlySavings)}/month) you would like to invest.
                 </p>
                 <div className="flex gap-2 justify-center mt-2">
                     {quickPercentages.map(p => (
@@ -317,29 +322,19 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
             <div className="text-center space-y-4 p-4 rounded-lg bg-black/10 dark:bg-white/10">
                 <h4 className="text-lg font-semibold text-[var(--text-color)]">Your Bank's Path</h4>
                 <p className="text-sm text-[var(--text-color-muted)] -mt-3">At Retirement Age {appState.idealRetirementAge}</p>
-                <div>
+                 <div className="border-t border-[var(--border-color)] pt-2">
                     <p className="text-sm text-[var(--text-color-muted)] flex items-center justify-center gap-1">
-                        <span>Projected Home Value</span>
-                        <Tooltip text="This is the estimated value of your home at your chosen retirement age, calculated by applying the 'Annual Property Growth Rate' you set.">
+                        <span>Projected Home Equity</span>
+                        <Tooltip text="CALCULATION: (Home Value at Retirement) - (Remaining Loan Balance). This is the portion of your home you own.">
                             <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>
-                    <p className="text-2xl font-bold" style={{color: 'var(--text-color)'}}>{formatCurrency(homeValueAtRetirement)}</p>
-                </div>
-                {bankDebtAtRetirement > 0 && (
-                    <div>
-                        <p className="text-sm text-[var(--text-color-muted)]">(Less Remaining Debt)</p>
-                        <p className="text-xl font-bold text-red-400">({formatCurrency(bankDebtAtRetirement)})</p>
-                    </div>
-                )}
-                <div className="border-t border-[var(--border-color)] pt-2">
-                    <p className="text-sm text-[var(--text-color-muted)]">Projected Home Equity</p>
                     <p className="text-2xl font-bold" style={{color: 'var(--chart-color-bank)'}}>{formatCurrency(bankEquityAtRetirement)}</p>
                 </div>
                 <div>
                     <p className="text-sm text-[var(--text-color-muted)] flex items-center justify-center gap-1">
                         <span>Wealth from Investments</span>
-                        <Tooltip text="In the bank's scenario, you are still paying your mortgage, so there is no surplus cash from freed-up repayments to invest.">
+                        <Tooltip text="In the bank's scenario, you are still paying your mortgage at this point, so there is no surplus cash from freed-up repayments to invest.">
                              <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>
@@ -353,7 +348,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
                  <div>
                     <p className="text-md font-semibold text-[var(--text-color)] flex items-center justify-center gap-1">
                         <span>Total Net Position</span>
-                         <Tooltip text="This is your total projected financial position. For the bank scenario, it's your 'Projected Home Equity' plus any cash saved from repayments after the loan is paid off.">
+                         <Tooltip text="CALCULATION: Home Equity + Investment Wealth + Cash. This is your total projected financial position at retirement with the bank's plan.">
                             <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>
@@ -363,20 +358,19 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
              <div className="text-center space-y-4 p-4 rounded-lg bg-black/10 dark:bg-white/10">
                 <h4 className="text-lg font-semibold text-[var(--text-color)]">The Crown Money Path 🏆</h4>
                 <p className="text-sm text-[var(--text-color-muted)] -mt-3">At Retirement Age {appState.idealRetirementAge}</p>
-                <div>
+                 <div className="border-t border-[var(--border-color)] pt-2">
                     <p className="text-sm text-[var(--text-color-muted)] flex items-center justify-center gap-1">
                         <span>Projected Home Equity</span>
-                        <Tooltip text="This is the estimated value of your home at retirement, based on the 'Annual Property Growth Rate'. With Crown, your loan is paid off, so your equity is the home's full value.">
+                        <Tooltip text="CALCULATION: Initial Property Value compounded by the Property Growth Rate. As the loan is paid off, your equity is the home's full value.">
                             <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>
                     <p className="text-2xl font-bold" style={{color: 'var(--chart-color-wealth)'}}>{formatCurrency(retirementWealthProjection.homeEquity)}</p>
-                    <p className="text-xs text-[var(--text-color-muted)]">(Loan fully paid)</p>
                 </div>
                 <div>
                     <p className="text-sm text-[var(--text-color-muted)] flex items-center justify-center gap-1">
                         <span>Wealth from Investments</span>
-                        <Tooltip text="This is the projected value of your investment portfolio. It's calculated by investing your 'Monthly Investment' amount from the time your loan is paid off until retirement, compounded at the 'Average Annual Investment Growth Rate'.">
+                        <Tooltip text="This is the projected value of your investment portfolio, calculated by compounding your 'Monthly Investment' amount at the 'Average Annual Investment Growth Rate' from the time your loan is paid off until retirement.">
                             <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>
@@ -390,7 +384,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
                 <div>
                     <p className="text-md font-semibold text-[var(--text-color)] flex items-center justify-center gap-1">
                         <span>Total Net Position</span>
-                         <Tooltip text="This is your total projected financial position with Crown Money. It's the sum of your 'Projected Home Equity', 'Wealth from Investments', and 'CASH SPENT ON LIFESTYLE since being debt free'.">
+                         <Tooltip text="CALCULATION: Home Equity + Investment Wealth + Cash. This is your total projected financial position with Crown Money at retirement.">
                             <InfoIcon className="h-4 w-4" />
                         </Tooltip>
                     </p>

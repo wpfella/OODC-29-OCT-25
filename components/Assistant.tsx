@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { AppState, AmortizationDataPoint } from '../types';
-import { ChatBubbleOvalLeftEllipsisIcon, PaperAirplaneIcon, XMarkIcon } from './common/IconComponents';
+import { SparklesIcon, PaperAirplaneIcon, XMarkIcon } from './common/IconComponents';
 
 interface AssistantProps {
   appState: AppState;
@@ -29,12 +29,16 @@ const getYear1Data = (schedule: AmortizationDataPoint[]) => {
 
 
 const generateAssistantContext = (appState: AppState, calculations: any, activeTab: string): string => {
-    const { loan, people, investmentProperties, idealRetirementAge, payoffStrategy, futureChanges, futureLumpSums } = appState;
+    const { 
+        loan, people, investmentProperties, idealRetirementAge, payoffStrategy, futureChanges, futureLumpSums,
+        incomes, expenses, otherDebts
+    } = appState;
     const { 
         bankLoanCalculation, 
         crownMoneyLoanCalculation, 
         investmentLoanCalculations,
         totalMonthlyIncome,
+        totalMonthlyLivingExpenses,
         totalMonthlyExpenses,
         retirementWealthProjection,
         investmentPropertiesNetCashflow
@@ -54,12 +58,22 @@ const generateAssistantContext = (appState: AppState, calculations: any, activeT
             interestRate: `${loan.interestRate.toFixed(2)}%`,
             repayment: `${formatCurrency(loan.repayment)} / ${loan.frequency}`,
             offsetBalance: formatCurrency(loan.offsetBalance),
+            netLoanAmount: formatCurrency(loan.amount - loan.offsetBalance),
         },
         budget: {
             totalMonthlyIncome: formatCurrency(totalMonthlyIncome),
-            totalMonthlyLivingExpenses: formatCurrency(totalMonthlyExpenses),
-            monthlySurplus: formatCurrency(totalMonthlyIncome - totalMonthlyExpenses),
+            totalMonthlyLivingExpenses: formatCurrency(totalMonthlyLivingExpenses),
+            monthlySurplus: formatCurrency(totalMonthlyIncome - totalMonthlyLivingExpenses),
             investmentNetCashflow: formatCurrency(investmentPropertiesNetCashflow),
+        },
+        formulas: {
+            netLoanAmount: "Loan Amount - Offset Balance",
+            monthlySurplus: "Total Monthly Income - Total Monthly Living Expenses",
+            totalInterestSaved: "(Bank Total Interest - Crown Money Total Interest) for all loans combined.",
+            yearsSaved: "Bank Payoff Years - Crown Money Payoff Years",
+            debtRecyclingNetProfit: "(Investment Returns - Investment Loan Interest) * (1 - Marginal Tax Rate)",
+            netWorth: "Home Equity + Investment Portfolio Value - Remaining Debt",
+            investmentPower: "This is your monthly surplus (Total Income - Total Monthly Expenses), which is available for investing once your home loan is paid off with the Crown Money strategy."
         },
         futureEvents: {
             scheduledChanges: futureChanges.map(c => ({
@@ -108,7 +122,12 @@ const generateAssistantContext = (appState: AppState, calculations: any, activeT
             projectedNetWorthAtRetirement: formatCurrency(
                 retirementWealthProjection.wealth + retirementWealthProjection.cashInHand + retirementWealthProjection.homeEquity
             ),
-        }
+        },
+        // NEW DETAILED DATA
+        itemizedIncomes: incomes,
+        itemizedExpenses: expenses,
+        itemizedOtherDebts: otherDebts,
+        detailedInvestmentProperties: investmentProperties,
     };
     
     return JSON.stringify(summary, null, 2);
@@ -141,9 +160,9 @@ const Assistant: React.FC<AssistantProps> = ({ appState, calculations, activeTab
             const context = generateAssistantContext(appState, calculations, activeTab);
 
             const prompt = `
-You are an expert financial assistant for the Crown Money "Out of Debt Calculator". Your personality is helpful, knowledgeable, and slightly informal, using Australian-style language (e.g., "G'day", "no worries", "have a squiz"). 
+You are "Cody", an expert financial assistant for the Crown Money "Out of Debt Calculator". Your personality is helpful, knowledgeable, and slightly informal, using Australian-style language (e.g., "G'day", "no worries", "have a squiz"). 
 
-Your primary role is to explain the numbers, charts, and calculations presented in the app, using the provided JSON context. When asked about a figure, break down the math for the user. For instance, if asked about 'Total Interest Saved', explain that it's the difference between the bank's total interest and Crown Money's total interest, and reference the specific values from the context. 
+Your primary role is to help the Crown Money sales agent explain the numbers, charts, and calculations to their client, using the provided JSON context. You should also encourage users to hover over the info icons on the app for quick tooltips.
 
 **CRITICAL OUTPUT REQUIREMENTS:**
 1.  **FORMAT:** Your entire response MUST be in well-structured, readable HTML. Use tags like <p>, <strong>, <em>, <ul>, and <li> for formatting. Do NOT use markdown.
@@ -151,9 +170,17 @@ Your primary role is to explain the numbers, charts, and calculations presented 
 3.  **STYLE:** Use paragraphs to separate ideas. Use bold tags (<strong>) to highlight key figures and terms. Use lists (<ul><li>) for breaking down steps or points. Do not use headings (<h1>, <h2> etc.).
 4.  **CONCISENESS:** Be concise but thorough.
 
-**IMPORTANT CALCULATION NOTES:**
+**HOW TO EXPLAIN CALCULATIONS:**
+When a user asks 'how' a number is calculated or 'why' it is what it is, you MUST break it down using simple math and the values from the JSON context. Refer to the 'formulas' object in the JSON for the correct calculation method.
 
-**Lump Sum Events:** When a user asks about a future lump sum event, you MUST use the specific details from the 'futureEvents.lumpSumEvents' section of the JSON context.
+*   **Example Query:** "How do you calculate my Monthly Surplus?"
+*   **Ideal Response:** "<p>No worries! We calculate your monthly surplus by taking your <strong>Total Monthly Income</strong> and subtracting your <strong>Total Monthly Living Expenses</strong>.</p><ul><li>Your Total Monthly Income is <strong>${JSON.parse(context).budget.totalMonthlyIncome}</strong>.</li><li>Your Total Monthly Living Expenses are <strong>${JSON.parse(context).budget.totalMonthlyLivingExpenses}</strong>.</li></ul><p>So, the math is: ${JSON.parse(context).budget.totalMonthlyIncome} - ${JSON.parse(context).budget.totalMonthlyLivingExpenses} = <strong>${JSON.parse(context).budget.monthlySurplus}</strong> available for debt reduction. You can also hover over the info icon on the 'Income & Expenses' tab for a quick summary of this!</p>"
+
+**NEW: DETAILED DATA AVAILABLE**
+The JSON context now includes detailed, itemized lists: 'itemizedIncomes', 'itemizedExpenses', 'itemizedOtherDebts', and 'detailedInvestmentProperties'. When a user asks a question about a *specific item* (e.g., "How much is my food budget?" or "What's the interest rate on my car loan?"), you MUST find that exact item in these lists and provide the specific details (amount, frequency, interest rate, etc.). This allows you to answer highly specific questions. ALWAYS refer to this detailed data for specifics.
+
+**LUMP SUM EVENTS:**
+When a user asks about a future lump sum event, you MUST use the specific details from the 'futureEvents.lumpSumEvents' section of the JSON context.
 1.  State the event's description, amount, and date explicitly.
 2.  Explain the impact for the **Bank Scenario**: An INCOME is added to the offset account. It does NOT directly pay down the loan. It simply reduces the interest calculated each month, which helps pay off the loan faster over time with the same fixed repayment. An EXPENSE is treated as a redraw, potentially increasing the loan balance if the offset is depleted.
 3.  Explain the impact for the **Crown Money Scenario**: An INCOME is used to immediately and directly pay down the loan principal, causing a significant and instant reduction in debt. An EXPENSE also directly increases the loan balance.
@@ -197,7 +224,7 @@ User's Question: "${userInput}"
                 className="fixed bottom-6 right-6 bg-[var(--title-color)] text-white p-4 rounded-full shadow-lg hover:bg-[var(--button-bg-hover-color)] transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-color)] focus:ring-[var(--title-color)] z-40 print:hidden"
                 aria-label="Open AI Assistant"
             >
-                <ChatBubbleOvalLeftEllipsisIcon className="h-8 w-8" />
+                <SparklesIcon className="h-8 w-8" />
             </button>
 
             {isOpen && (
@@ -218,7 +245,7 @@ User's Question: "${userInput}"
                                     <ul className="text-sm mt-4 space-y-2">
                                         <li className="p-2 bg-black/10 dark:bg-white/5 rounded-md">"How is my total interest saving calculated?"</li>
                                         <li className="p-2 bg-black/10 dark:bg-white/5 rounded-md">"Why doesn't the Bank loan balance drop after an inheritance?"</li>
-                                        <li className="p-2 bg-black/10 dark:bg-white/5 rounded-md">"Why is there a sharp drop on my OODC chart?"</li>
+                                        <li className="p-2 bg-black/10 dark:bg-white/5 rounded-md">"What's my weekly food budget?"</li>
                                     </ul>
                                 </div>
                             )}

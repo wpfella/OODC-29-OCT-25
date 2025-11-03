@@ -86,6 +86,9 @@ const FutureChangesSection: React.FC<FutureChangesSectionProps> = React.memo(({ 
 
     return (
         <div className="space-y-4">
+            <p className="text-sm text-[var(--text-color-muted)] mb-4 -mt-2 print:hidden">
+                Plan for known, ongoing changes to your budget. For example: a pay rise, a child's daycare fees stopping, or a temporary change in income. This helps create a more accurate long-term forecast.
+            </p>
             {futureChanges.map((change, index) => {
                 const startDateKey = `start-${change.id}`;
                 const isStartDateFocused = focusedDateField === startDateKey;
@@ -129,14 +132,9 @@ const FutureChangesSection: React.FC<FutureChangesSectionProps> = React.memo(({ 
                             )}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1 flex items-center gap-1">
-                                    Type
-                                    <Tooltip text="Specify if this event is an income (money in) or an expense (money out).">
-                                        <InfoIcon className="h-3 w-3" />
-                                    </Tooltip>
-                                </label>
+                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Type</label>
                                 <select
                                     value={change.type}
                                     onChange={e => handleListChange(index, 'type', e.target.value)}
@@ -148,18 +146,33 @@ const FutureChangesSection: React.FC<FutureChangesSectionProps> = React.memo(({ 
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1 flex items-center gap-1">
-                                    Change Amount
-                                    <Tooltip text="Use a positive value for an increase (e.g., a pay rise) and a negative value for a decrease (e.g., an expense stopping).">
-                                        <InfoIcon className="h-3 w-3" />
-                                    </Tooltip>
-                                </label>
+                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Action</label>
+                                <select
+                                    value={change.changeAmount >= 0 ? 'increase' : 'decrease'}
+                                    onChange={e => {
+                                        const newSign = e.target.value === 'increase' ? 1 : -1;
+                                        const currentAmount = Math.abs(change.changeAmount);
+                                        handleListChange(index, 'changeAmount', currentAmount * newSign);
+                                    }}
+                                    className={selectClasses}
+                                >
+                                    <option value="increase">Starts / Increases</option>
+                                    <option value="decrease">Stops / Decreases</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">By Amount</label>
                                 <input
                                     type="number"
-                                    value={change.changeAmount}
-                                    onChange={e => handleListChange(index, 'changeAmount', parseFloat(e.target.value) || 0)}
+                                    value={Math.abs(change.changeAmount)}
+                                    onChange={e => {
+                                        const newAmount = parseFloat(e.target.value) || 0;
+                                        const sign = change.changeAmount >= 0 ? 1 : -1;
+                                        handleListChange(index, 'changeAmount', newAmount * sign);
+                                    }}
                                     className={inputClasses}
-                                    placeholder="e.g., -800"
+                                    placeholder="e.g., 800"
+                                    min="0"
                                 />
                             </div>
                              <div>
@@ -234,10 +247,11 @@ const FutureChangesSection: React.FC<FutureChangesSectionProps> = React.memo(({ 
                     <div key={`print-${change.id}`} className="grid grid-cols-12 text-black py-1 border-b border-gray-200 text-sm">
                         <span className="col-span-3">{change.description}</span>
                         <span className="col-span-1 capitalize">{change.type}</span>
-                        <span className={`col-span-2 ${change.changeAmount >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {change.changeAmount >= 0 ? '+' : ''}{formatCurrency(change.changeAmount)} / {change.frequency}
+                        <span className="col-span-3">
+                            {change.changeAmount >= 0 ? 'Increase of ' : 'Decrease of '}
+                            {formatCurrency(Math.abs(change.changeAmount))} / {change.frequency}
                         </span>
-                        <span className="col-span-6">From: {change.startDate} To: {change.isPermanent ? 'Permanent' : change.endDate}</span>
+                        <span className="col-span-5">From: {change.startDate} To: {change.isPermanent ? 'Permanent' : change.endDate}</span>
                     </div>
                 ))}
             </div>
@@ -336,7 +350,7 @@ const LumpSumImpactDisplay: React.FC<{
                     <p className="font-bold">How the impact is calculated:</p>
                     <ul className="list-disc pl-4 mt-1 space-y-2">
                         <li>
-                            <strong>Bank Scenario:</strong> We assume your lump sum income goes into your offset account. This reduces the interest calculated each month, so more of your <strong>fixed repayment</strong> goes towards the principal. This shortens the loan term, but does not immediately reduce the loan balance itself. A lump sum expense is treated as a redraw, increasing your loan balance.
+                            <strong>Bank Scenario:</strong> We assume your lump sum income goes into your offset account. This reduces the interest calculated each month, so more of your <strong>fixed repayment</strong> goes towards the principal. This shortens the loan term, but does not immediately reduce the loan balance itself. A lump sum expense is treated as a redraw, increasing your loan balance if the offset is depleted.
                         </li>
                         <li>
                             <strong>Crown Money Scenario:</strong> The Crown strategy is to use the entire lump sum income to <strong>immediately pay down the loan principal</strong>. This creates a large, instant reduction in your debt, leading to massive interest savings. A lump sum expense also directly increases the loan balance.
@@ -478,8 +492,8 @@ interface Props {
 }
 
 const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculations }) => {
-  const { incomes, expenses, futureChanges, futureLumpSums, loan } = appState;
-  const { totalMonthlyIncome, totalMonthlyExpenses, investmentPropertiesNetCashflow, getMonthlyAmount } = calculations;
+  const { incomes, expenses, futureChanges, futureLumpSums, loan, otherDebts } = appState;
+  const { totalMonthlyIncome, totalMonthlyExpenses, investmentPropertiesNetCashflow, getMonthlyAmount, totalMonthlyLivingExpenses } = calculations;
 
   const handleListChange = <T,>(list: T[], setList: (list: T[]) => void, index: number, field: keyof T, value: any) => {
     const newList = [...list];
@@ -503,13 +517,15 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
     setList(list.filter(item => item.id !== id));
   };
 
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+  const formatCurrency = (value: number, digits = 0) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
 
   const monthlyLoanRepayment = getMonthlyAmount(loan.repayment, loan.frequency);
-  const surplusForDebtReduction = totalMonthlyIncome - totalMonthlyExpenses;
+  const surplusForDebtReduction = totalMonthlyIncome - totalMonthlyLivingExpenses;
   const netMonthlyCashflow = surplusForDebtReduction - monthlyLoanRepayment;
 
   const inputClasses = "bg-[var(--input-bg-color)] p-2 rounded border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
+  
+  const expenseCategories: ExpenseItem['category'][] = ['FFF', 'Hard Expenses', 'Soft Expenses', 'Other'];
 
   const renderIncomeRows = () => (
     <>
@@ -596,9 +612,9 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
     addListItem(futureLumpSums, l => setAppState(s => ({...s, futureLumpSums: l})), newLumpSum);
   };
   
-  const FutureChangesCardTitle = () => (
+  const PlannedChangesCardTitle = () => (
       <div className="flex items-center gap-2">
-          <span>Future Income/Expense Changes</span>
+          <span>Plan for Future Budget Changes</span>
           <Tooltip text="Use this to model future events, like a pay rise or a child finishing daycare. These changes will affect the Crown Money calculation from the specified date onwards.">
               <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
           </Tooltip>
@@ -660,18 +676,56 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                     <span className={`font-semibold ${investmentPropertiesNetCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(investmentPropertiesNetCashflow)}</span>
                     </div>
                 )}
-                <div className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--color-negative-bg)' }}>
-                    <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Total Monthly Living Expenses</span>
-                    <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(totalMonthlyExpenses)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-lg border" style={{ backgroundColor: 'var(--color-surplus-bg)', borderColor: 'var(--color-surplus-text)' }}>
-                    <div className="flex items-center gap-2">
-                        <span className="font-bold" style={{ color: 'var(--color-surplus-text)' }}>Surplus for Debt Reduction</span>
-                        <Tooltip text="This is the key figure for the Crown Money strategy (Total Income - Living Expenses). This entire amount is used to accelerate your debt reduction.">
-                            <InfoIcon className="h-4 w-4 text-blue-300 print:hidden"/>
-                        </Tooltip>
+                <div>
+                    <div className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--color-negative-bg)' }}>
+                        <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Total Monthly Expenses</span>
+                        <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(totalMonthlyExpenses)}</span>
                     </div>
-                    <span className="font-bold text-lg" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(surplusForDebtReduction)}</span>
+                    <div className="text-xs text-[var(--text-color-muted)] mt-1 pr-2 space-y-2 border-l-2 border-[var(--border-color)] pl-2 ml-auto w-fit text-right">
+                        {expenseCategories.map(category => {
+                            const categoryExpenses = expenses.filter(exp => exp.category === category);
+                            if (categoryExpenses.length === 0) return null;
+
+                            const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + getMonthlyAmount(exp.amount, exp.frequency), 0);
+
+                            return (
+                                <div key={category} className="pl-2 pb-2">
+                                    <h5 className="font-semibold text-[var(--text-color)] text-left mb-1 capitalize">{category.replace(' Expenses', '')}</h5>
+                                    {categoryExpenses.map(exp => (
+                                        <div key={exp.id} className="flex justify-between gap-4 italic">
+                                            <span>{exp.name} ({formatCurrency(exp.amount,0)}/{exp.frequency.charAt(0)})</span>
+                                            <span>{formatCurrency(getMonthlyAmount(exp.amount, exp.frequency), 2)}</span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-1 mt-1 border-t border-dashed border-[var(--border-color)]">
+                                        <span>Subtotal</span>
+                                        <span>{formatCurrency(categoryTotal, 2)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {investmentPropertiesNetCashflow < 0 && 
+                            <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-2 border-t border-dashed border-[var(--border-color)] pl-2">
+                                <span>Investment Shortfall</span>
+                                <span>{formatCurrency(Math.abs(investmentPropertiesNetCashflow), 2)}</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                
+                <div>
+                    <div className="flex justify-between items-center p-3 rounded-lg border" style={{ backgroundColor: 'var(--color-surplus-bg)', borderColor: 'var(--color-surplus-text)' }}>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold" style={{ color: 'var(--color-surplus-text)' }}>Surplus for Debt Reduction</span>
+                            <Tooltip text="CALCULATION: Total Monthly Income - Total Monthly Living Expenses. This is the key figure for the Crown Money strategy. This entire amount is used to accelerate your debt reduction.">
+                                <InfoIcon className="h-4 w-4 text-blue-300 print:hidden"/>
+                            </Tooltip>
+                        </div>
+                        <span className="font-bold text-lg" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(surplusForDebtReduction)}</span>
+                    </div>
+                    <div className="text-right text-xs text-[var(--text-color-muted)] mt-1 pr-2 italic">
+                        ( {formatCurrency(totalMonthlyIncome)} - {formatCurrency(totalMonthlyLivingExpenses)} )
+                    </div>
                 </div>
 
                 <hr className="border-[var(--border-color)] border-dashed my-2" />
@@ -680,13 +734,23 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                     <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Current Loan Repayment</span>
                     <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(monthlyLoanRepayment)}</span>
                 </div>
-                <div className="flex justify-between items-center p-3 rounded-lg border-2 mt-2" style={{ borderColor: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>
-                    <span className="font-bold text-base" style={{ color: 'var(--text-color)' }}>Final Net Monthly Cashflow</span>
-                    <span className="font-extrabold text-2xl" style={{ color: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netMonthlyCashflow)}</span>
+                 <div>
+                    <div className="flex justify-between items-center p-3 rounded-lg border-2" style={{ borderColor: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-base" style={{ color: 'var(--text-color)' }}>Final Net Monthly Cashflow</span>
+                            <Tooltip text="CALCULATION: Surplus for Debt Reduction - Current Loan Repayment. This shows your leftover cashflow each month after paying living expenses and your primary home loan, but *before* other debt repayments. This figure represents the cashflow available under your bank's current structure.">
+                                <InfoIcon className="h-4 w-4 text-[var(--text-color)] print:hidden"/>
+                            </Tooltip>
+                        </div>
+                        <span className="font-extrabold text-2xl" style={{ color: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netMonthlyCashflow)}</span>
+                    </div>
+                    <div className="text-right text-xs text-[var(--text-color-muted)] mt-1 pr-2 italic">
+                        ( {formatCurrency(surplusForDebtReduction)} - {formatCurrency(monthlyLoanRepayment)} )
+                    </div>
                 </div>
             </div>
         </Card>
-         <Card title={<FutureChangesCardTitle />}>
+         <Card title={<PlannedChangesCardTitle />}>
             <FutureChangesSection
               futureChanges={futureChanges}
               incomes={incomes}

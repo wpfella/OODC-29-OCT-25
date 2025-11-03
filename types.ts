@@ -3,6 +3,7 @@ export type LoanFrequency = 'weekly' | 'fortnightly' | 'monthly';
 
 export interface LoanDetails {
   amount: number;
+  propertyValue: number;
   interestRate: number;
   repayment: number;
   frequency: LoanFrequency;
@@ -28,6 +29,16 @@ export interface ExpenseItem {
   amount: number;
   category: 'FFF' | 'Soft Expenses' | 'Hard Expenses' | 'Other';
   frequency: Frequency;
+}
+
+export interface OtherDebt {
+  id: number;
+  name: string;
+  amount: number;
+  interestRate: number;
+  repayment: number;
+  frequency: Frequency;
+  remainingTerm: number; // in years
 }
 
 export interface FutureChange {
@@ -82,6 +93,7 @@ export interface AppState {
   people: Person[];
   incomes: IncomeItem[];
   expenses: ExpenseItem[];
+  otherDebts: OtherDebt[];
   futureChanges: FutureChange[];
   futureLumpSums: FutureLumpSum[];
   investmentProperties: InvestmentProperty[];
@@ -122,6 +134,10 @@ export interface AmortizationDataPoint {
   principalPaid: number;
   remainingBalance: number;
   offsetBalance: number;
+  // New properties to track total portfolio
+  totalInterestPaid?: number;
+  totalPrincipalPaid?: number;
+  totalRemainingBalance?: number;
 }
 
 export interface LoanSummary {
@@ -134,4 +150,11 @@ export interface LoanSummary {
   investmentPortfolioSchedule?: { month: number; value: number }[];
   finalInvestmentPortfolioValue?: number;
   finalInvestmentLoanBalance?: number;
+}
+
+export interface SavedScenario {
+  id: number;
+  name: string;
+  timestamp: number;
+  data: AppState;
 }

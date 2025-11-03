@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, Tab, ExpenseItem, InvestmentProperty, InvestmentPropertyExpense, FutureChange, FutureLumpSum, Person, IncomeItem, LoanDetails, Frequency } from './types';
+import { AppState, Tab, ExpenseItem, InvestmentProperty, InvestmentPropertyExpense, FutureChange, FutureLumpSum, Person, IncomeItem, LoanDetails, Frequency, SavedScenario } from './types';
 import Tab1_CurrentLoan from './components/Tab1_CurrentLoan';
 import Tab2_InterestBreakdown from './components/Tab2_InterestBreakdown';
 import Tab3_IncomeExpenses from './components/Tab3_IncomeExpenses';
@@ -9,7 +10,7 @@ import Tab_InvestmentOODC from './components/Tab_InvestmentOODC';
 import Tab_DebtRecycling from './components/Tab_DebtRecycling';
 import Tab_In2Wealth from './components/Tab_In2Wealth';
 import Tab5_Summary from './components/Tab5_Summary';
-import { CrownLogo, SunIcon, MoonIcon, PrintIcon, DownloadIcon, SpeakerOnIcon, SpeakerOffIcon, CalculatorIcon, CodeBracketIcon, TrashIcon, CameraIcon, UndoIcon } from './components/common/IconComponents';
+import { CrownLogo, SunIcon, MoonIcon, PrintIcon, DownloadIcon, SpeakerOnIcon, SpeakerOffIcon, CalculatorIcon, CodeBracketIcon, TrashIcon, CameraIcon, UndoIcon, SaveIcon, FolderOpenIcon, UploadIcon } from './components/common/IconComponents';
 import { useMortgageCalculations } from './hooks/useMortgageCalculations';
 import Toast from './components/common/Toast';
 import Modal from './components/common/Modal';
@@ -87,6 +88,7 @@ const lightPalette = {
 };
 
 const LOCAL_STORAGE_KEY = 'crownMoneyCalculatorState';
+const SCENARIOS_STORAGE_KEY = 'crownMoneyCalculatorScenariosV2';
 
 const ZAPIER_WEBHOOK_URL = 'https://hooks.zapier.com/hooks/catch/23718141/u9jdfar/';
 const UPLOAD_PASSWORD = 'Crown';
@@ -94,6 +96,7 @@ const UPLOAD_PASSWORD = 'Crown';
 export const initialAppState: AppState = {
   loan: {
     amount: 350000,
+    propertyValue: 450000,
     interestRate: 6.5,
     repayment: 2500,
     frequency: 'monthly',
@@ -131,6 +134,7 @@ export const initialAppState: AppState = {
     { id: 17, name: 'Rent', amount: 0, category: 'Hard Expenses', frequency: 'weekly' },
     { id: 18, name: 'Kids Activities', amount: 0, category: 'Hard Expenses', frequency: 'annually' },
   ],
+  otherDebts: [],
   futureChanges: [],
   futureLumpSums: [],
   investmentProperties: [],
@@ -155,6 +159,7 @@ export const initialAppState: AppState = {
 export const emptyAppState: AppState = {
   loan: {
     amount: 0,
+    propertyValue: 0,
     interestRate: 6.5,
     repayment: 0,
     frequency: 'monthly',
@@ -166,6 +171,7 @@ export const emptyAppState: AppState = {
   ],
   incomes: [],
   expenses: [],
+  otherDebts: [],
   futureChanges: [],
   futureLumpSums: [],
   investmentProperties: [],
@@ -221,6 +227,12 @@ const App: React.FC = () => {
   const [infoToast, setInfoToast] = useState('');
   const { isSpeaking, speak, cancel } = useSpeechSynthesizer();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+  const [scenarioNameInput, setScenarioNameInput] = useState('');
+  const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>([]);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   
 
   useEffect(() => {
@@ -303,6 +315,28 @@ const App: React.FC = () => {
   useEffect(() => {
     cancel();
   }, [activeTab, cancel]);
+  
+  useEffect(() => {
+    try {
+        const scenariosJSON = localStorage.getItem(SCENARIOS_STORAGE_KEY);
+        if (scenariosJSON) {
+            setSavedScenarios(JSON.parse(scenariosJSON));
+        }
+    } catch (error) {
+        console.error("Failed to load scenarios from localStorage", error);
+        setSavedScenarios([]);
+    }
+  }, []);
+
+  const updateSavedScenarios = (newScenarios: SavedScenario[]) => {
+    newScenarios.sort((a, b) => b.timestamp - a.timestamp);
+    setSavedScenarios(newScenarios);
+    try {
+        localStorage.setItem(SCENARIOS_STORAGE_KEY, JSON.stringify(newScenarios));
+    } catch (error) {
+        console.error("Failed to save scenarios to localStorage", error);
+    }
+  };
 
   const calculations = useMortgageCalculations(appState);
 
@@ -457,6 +491,7 @@ const App: React.FC = () => {
             <tr><th>Number of Kids</th><td>${appState.numberOfKids}</td></tr>
             <tr><th>Attendance</th><td>${appState.allPartiesInAttendance}</td></tr>
             <tr><td colspan="2"><strong>Current Loan</strong></td></tr>
+            <tr><th>Property Value</th><td>${formatCurrency(loan.propertyValue)}</td></tr>
             <tr><th>Loan Amount</th><td>${formatCurrency(loan.amount)}</td></tr>
             <tr><th>Offset Balance</th><td>${formatCurrency(loan.offsetBalance || 0)}</td></tr>
             <tr><th>Net Loan Amount</th><td><strong>${formatCurrency(netLoanAmount)}</strong></td></tr>
@@ -611,6 +646,7 @@ const App: React.FC = () => {
     };
 
     // --- Core Aggregates & Loan Details ---
+    addProperty('property_value', appState.loan.propertyValue);
     addProperty('loan_amount', appState.loan.amount);
     addProperty('offset_balance', appState.loan.offsetBalance || 0);
     const netLoanAmount = appState.loan.amount - (appState.loan.offsetBalance || 0);
@@ -685,6 +721,15 @@ const App: React.FC = () => {
         addProperty(`expense_${index + 1}_frequency`, expense.frequency);
         addProperty(`expense_${index + 1}_category`, expense.category);
         addProperty(`expense_${index + 1}_monthly_amount`, getMonthlyAmount(expense.amount, expense.frequency));
+    });
+
+    appState.otherDebts.forEach((debt, index) => {
+        const debtPrefix = `other_debt_${index + 1}`;
+        addProperty(`${debtPrefix}_name`, debt.name);
+        addProperty(`${debtPrefix}_amount`, debt.amount);
+        addProperty(`${debtPrefix}_interest_rate`, debt.interestRate);
+        addProperty(`${debtPrefix}_repayment`, debt.repayment);
+        addProperty(`${debtPrefix}_frequency`, debt.frequency);
     });
 
     appState.futureChanges.forEach((change, index) => {
@@ -784,26 +829,6 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
   
-  const handleSaveJSON = () => {
-    setIsDriveModalOpen(false);
-    const flatData = generateFlatData();
-    const jsonObject = Object.fromEntries(flatData);
-    const jsonContent = JSON.stringify(jsonObject, null, 2);
-    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    const emailPrefix = appState.clientEmail ? String(appState.clientEmail).split('@')[0].replace(/[^a-z0-9]/gi, '_') : 'summary';
-    const date = new Date().toISOString().split('T')[0];
-    link.setAttribute("download", `crown_money_summary_${emailPrefix}_${date}.json`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-
   const handleExplain = () => {
       if (isSpeaking) {
           cancel();
@@ -837,6 +862,110 @@ const App: React.FC = () => {
         setInfoToast('Reverted to previous snapshot.');
     }
     setIsRevertModalOpen(false);
+  };
+  
+  const handleOpenSaveModal = () => {
+    const date = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const suggestedName = appState.clientEmail 
+        ? `${appState.clientEmail.split('@')[0]} - ${date}` 
+        : `New Scenario - ${date}`;
+    setScenarioNameInput(suggestedName);
+    setIsSaveModalOpen(true);
+  };
+
+  const handleSaveScenario = () => {
+      if (!scenarioNameInput.trim()) {
+          alert("Please enter a name for the scenario.");
+          return;
+      }
+      const newScenario: SavedScenario = {
+          id: Date.now(),
+          name: scenarioNameInput.trim(),
+          timestamp: Date.now(),
+          data: appState,
+      };
+      updateSavedScenarios([...savedScenarios, newScenario]);
+      setIsSaveModalOpen(false);
+      setInfoToast('Scenario saved successfully!');
+  };
+
+  const handleLoadScenario = (id: number) => {
+      const scenarioToLoad = savedScenarios.find(s => s.id === id);
+      if (scenarioToLoad) {
+          setAppState(scenarioToLoad.data);
+          setIsLoadModalOpen(false);
+          setInfoToast(`Scenario "${scenarioToLoad.name}" loaded.`);
+      }
+  };
+
+  const handleDeleteScenario = (id: number) => {
+      const scenarioToDelete = savedScenarios.find(s => s.id === id);
+      if (scenarioToDelete && window.confirm(`Are you sure you want to delete the scenario "${scenarioToDelete.name}"?`)) {
+          const newScenarios = savedScenarios.filter(s => s.id !== id);
+          updateSavedScenarios(newScenarios);
+          setInfoToast('Scenario deleted.');
+      }
+  };
+
+  const handleExportScenario = (id: number) => {
+      const scenarioToExport = savedScenarios.find(s => s.id === id);
+      if (!scenarioToExport) return;
+
+      const jsonContent = JSON.stringify(scenarioToExport.data, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      const sanitizedName = scenarioToExport.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      link.setAttribute("download", `crown_money_scenario_${sanitizedName}.json`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+  };
+
+  const handleImportClick = () => {
+      importFileInputRef.current?.click();
+  };
+
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const text = e.target?.result;
+              if (typeof text !== 'string') throw new Error("File is not readable text.");
+              
+              const importedData = JSON.parse(text);
+
+              if (!importedData.loan || !importedData.people || !importedData.expenses) {
+                  throw new Error("Invalid scenario file format.");
+              }
+
+              const scenarioName = prompt("Please enter a name for the imported scenario:", file.name.replace('.json', ''));
+              if (scenarioName) {
+                  const newScenario: SavedScenario = {
+                      id: Date.now(),
+                      name: scenarioName,
+                      timestamp: Date.now(),
+                      data: { ...initialAppState, ...importedData }, // Merge with defaults to ensure compatibility
+                  };
+                  updateSavedScenarios([...savedScenarios, newScenario]);
+                  setInfoToast(`Scenario "${scenarioName}" imported successfully!`);
+              }
+          } catch (error) {
+              console.error("Failed to import scenario:", error);
+              alert(`Error importing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } finally {
+              if (event.target) {
+                  event.target.value = '';
+              }
+          }
+      };
+      reader.readAsText(file);
   };
 
   const primaryClientEmail = appState.clientEmail;
@@ -891,6 +1020,14 @@ const App: React.FC = () => {
         <header className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-4 border-b border-[var(--border-color)] print:hidden">
           <CrownLogo className="h-12 w-auto text-[var(--text-color)]" />
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap justify-center">
+              <button onClick={handleOpenSaveModal} title="Save Scenario" className={buttonBaseClasses}>
+                  <SaveIcon className="h-5 w-5"/>
+                  <span className="text-sm font-semibold hidden sm:inline">Save Scenario</span>
+              </button>
+              <button onClick={() => setIsLoadModalOpen(true)} title="Load Scenarios" className={buttonBaseClasses}>
+                  <FolderOpenIcon className="h-5 w-5"/>
+                  <span className="text-sm font-semibold hidden sm:inline">Scenarios</span>
+              </button>
               <button onClick={handleCreateSnapshot} title="Create Snapshot" className={buttonBaseClasses}>
                   <CameraIcon className="h-5 w-5"/>
                   <span className="text-sm font-semibold hidden sm:inline">Create Snapshot</span>
@@ -905,9 +1042,9 @@ const App: React.FC = () => {
                     <span className="text-sm font-semibold hidden sm:inline">Revert Changes</span>
                 </button>
               )}
-              <button onClick={() => setIsDriveModalOpen(true)} title="Print / Save Report" className={buttonBaseClasses}>
+              <button onClick={() => setIsDriveModalOpen(true)} title="Export Client Report" className={buttonBaseClasses}>
                   <PrintIcon className="h-5 w-5"/>
-                  <span className="text-sm font-semibold hidden sm:inline">Print / Save</span>
+                  <span className="text-sm font-semibold hidden sm:inline">Export Report</span>
               </button>
                <button onClick={() => setIsCalculatorOpen(true)} title="Advanced Calculator" className={buttonBaseClasses}>
                   <CalculatorIcon className="h-5 w-5"/>
@@ -1013,10 +1150,10 @@ const App: React.FC = () => {
       <Modal
         isOpen={isDriveModalOpen}
         onClose={() => setIsDriveModalOpen(false)}
-        title="Print or Save Report"
+        title="Export Client Report"
       >
         <div className="space-y-4 text-sm text-[var(--text-color-muted)]">
-            <p>You can save the summary report in three different formats:</p>
+            <p>You can export the client report in two different formats:</p>
             <div className="flex items-start gap-4 p-3 bg-black/10 dark:bg-white/5 rounded-lg">
                 <div className="flex-shrink-0 bg-[var(--title-color)] text-[var(--bg-color)] print:text-white rounded-full h-6 w-6 flex items-center justify-center font-bold">1</div>
                 <div>
@@ -1028,18 +1165,11 @@ const App: React.FC = () => {
                 <div className="flex-shrink-0 bg-[var(--title-color)] text-[var(--bg-color)] print:text-white rounded-full h-6 w-6 flex items-center justify-center font-bold">2</div>
                 <div>
                     <h4 className="font-bold text-[var(--text-color)]">Save as CSV</h4>
-                    <p>Exports all data fields individually into a CSV file. Ideal for spreadsheets or simple data parsing.</p>
-                </div>
-            </div>
-            <div className="flex items-start gap-4 p-3 bg-black/10 dark:bg-white/5 rounded-lg">
-                <div className="flex-shrink-0 bg-[var(--title-color)] text-[var(--bg-color)] print:text-white rounded-full h-6 w-6 flex items-center justify-center font-bold">3</div>
-                <div>
-                    <h4 className="font-bold text-[var(--text-color)]">Save as JSON</h4>
-                    <p>Exports all data fields into a structured JSON file. Best for developers or automated systems.</p>
+                    <p>Exports all data fields individually into a CSV file. Ideal for spreadsheets or importing into other systems like HubSpot.</p>
                 </div>
             </div>
         </div>
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button 
                 onClick={handlePrint} 
                 className="w-full p-2 bg-[var(--button-bg-color)] text-white rounded-md font-semibold hover:bg-[var(--button-bg-hover-color)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--title-color)]"
@@ -1052,13 +1182,6 @@ const App: React.FC = () => {
             >
                 <DownloadIcon className="h-5 w-5" />
                 <span>Save as CSV</span>
-            </button>
-            <button 
-                onClick={handleSaveJSON}
-                className="w-full p-2 bg-[var(--card-bg-color)] hover:bg-[var(--input-bg-color)] rounded-md font-semibold text-center border border-[var(--border-color)] transition-colors flex items-center justify-center gap-2"
-            >
-                <CodeBracketIcon className="h-5 w-5" />
-                <span>Save as JSON</span>
             </button>
         </div>
       </Modal>
@@ -1114,6 +1237,79 @@ const App: React.FC = () => {
             </div>
           </div>
         </Modal>
+
+      <Modal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        title="Save Scenario"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-color-muted)]">Enter a name to save the current scenario.</p>
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Scenario Name</label>
+            <input
+              type="text"
+              value={scenarioNameInput}
+              onChange={(e) => setScenarioNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveScenario()}
+              className="w-full bg-[var(--input-bg-color)] p-2 rounded-md border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setIsSaveModalOpen(false)}
+              className="px-4 py-2 bg-[var(--card-bg-color)] hover:bg-[var(--input-bg-color)] rounded-md font-semibold text-center border border-[var(--border-color)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--title-color)]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveScenario}
+              className="px-4 py-2 bg-[var(--button-bg-color)] text-white rounded-md font-semibold hover:bg-[var(--button-bg-hover-color)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--title-color)]"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isLoadModalOpen}
+        onClose={() => setIsLoadModalOpen(false)}
+        title="Load or Manage Scenarios"
+      >
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              {savedScenarios.length === 0 ? (
+                  <p className="text-center text-sm text-[var(--text-color-muted)] py-8">No saved scenarios yet. Use the "Save" button to create one.</p>
+              ) : (
+                  <ul className="space-y-3">
+                      {savedScenarios.map(scenario => (
+                          <li key={scenario.id} className="p-3 bg-black/10 dark:bg-white/5 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex-grow">
+                                  <p className="font-semibold text-[var(--text-color)]">{scenario.name}</p>
+                                  <p className="text-xs text-[var(--text-color-muted)]">
+                                      Last modified: {new Date(scenario.timestamp).toLocaleString()}
+                                  </p>
+                              </div>
+                              <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+                                  <button onClick={() => handleLoadScenario(scenario.id)} className="px-3 py-1 text-sm bg-[var(--button-bg-color)] text-white rounded-md font-semibold hover:bg-[var(--button-bg-hover-color)] transition-colors">Load</button>
+                                  <button onClick={() => handleExportScenario(scenario.id)} className="px-3 py-1 text-sm bg-[var(--card-bg-color)] hover:bg-[var(--input-bg-color)] rounded-md border border-[var(--border-color)] transition-colors flex items-center gap-1.5"><DownloadIcon className="h-4 w-4"/> Export</button>
+                                  <button onClick={() => handleDeleteScenario(scenario.id)} className="px-3 py-1 text-sm bg-red-600/20 text-red-400 hover:bg-red-600/40 rounded-md transition-colors">Delete</button>
+                              </div>
+                          </li>
+                      ))}
+                  </ul>
+              )}
+          </div>
+          <div className="mt-6 pt-4 border-t border-[var(--border-color)] flex justify-between items-center">
+              <p className="text-sm text-[var(--text-color-muted)]">Have a scenario file?</p>
+              <input type="file" ref={importFileInputRef} onChange={handleImportFile} accept=".json" className="hidden" />
+              <button onClick={handleImportClick} className="px-4 py-2 bg-[var(--card-bg-color)] hover:bg-[var(--input-bg-color)] rounded-md font-semibold text-center border border-[var(--border-color)] transition-colors flex items-center justify-center gap-2">
+                  <UploadIcon className="h-5 w-5"/>
+                  <span>Import Scenario</span>
+              </button>
+          </div>
+      </Modal>
       
       <Assistant appState={appState} calculations={calculations} activeTab={tabs.find(t => t.id === activeTab)?.label || 'Current Loan'} />
 

@@ -1,8 +1,11 @@
 
+
 import React, { useMemo } from 'react';
 import { AppState } from '../types';
 import Card from './common/Card';
-import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, CartesianGrid, ReferenceDot, Label } from 'recharts';
+import { ComposedChart, AreaChart, Area, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, CartesianGrid, ReferenceDot, Label } from 'recharts';
+import Tooltip from './common/Tooltip';
+import { InfoIcon } from './common/IconComponents';
 
 interface Props {
   appState: AppState;
@@ -76,8 +79,8 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
   const crownPayoffEvents = useMemo(() => 
     investmentLoanCalculations.payoffBreakpoints.map((bp: any) => ({
         ...bp,
-        y: findYValue(bp.year, 'Crown Money Snowball', totalDebtData),
-    })), [investmentLoanCalculations.payoffBreakpoints, totalDebtData]);
+        y: 0, // Payoff events happen at 0 balance for the targeted loan.
+    })), [investmentLoanCalculations.payoffBreakpoints]);
 
   const bankPayoffEvents = useMemo(() => {
       const events = [];
@@ -159,20 +162,23 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
                 Your total investment debt is <strong>{formatCurrency(investmentLoanCalculations.totalInvestmentDebt)}</strong>.
             </p>
             <div className="flex justify-center p-1 rounded-full bg-[var(--input-bg-color)] border border-[var(--border-color)] max-w-md mx-auto">
-                <button 
-                    onClick={() => handleStrategyChange('snowball')}
-                    className={`w-full py-2 px-4 rounded-full text-sm font-semibold transition-colors ${payoffStrategy === 'snowball' ? 'bg-indigo-600 text-white' : 'text-[var(--text-color-muted)] hover:bg-white/5'}`}
-                >
-                    Snowball (Lowest Loan First)
-                </button>
-                <button 
-                    onClick={() => handleStrategyChange('simultaneous')}
-                    className={`w-full py-2 px-4 rounded-full text-sm font-semibold transition-colors ${payoffStrategy === 'simultaneous' ? 'bg-indigo-600 text-white' : 'text-[var(--text-color-muted)] hover:bg-white/5'}`}
-                >
-                    Simultaneous Payoff
-                </button>
+                <Tooltip text="Snowball Method: After your home is paid off, all surplus cashflow is directed to the investment property with the smallest loan balance. Once that's paid off, the payment 'snowballs' to the next smallest loan. This provides quick wins and builds momentum.">
+                    <button 
+                        onClick={() => handleStrategyChange('snowball')}
+                        className={`w-full py-2 px-4 rounded-full text-sm font-semibold transition-colors ${payoffStrategy === 'snowball' ? 'bg-indigo-600 text-white' : 'text-[var(--text-color-muted)] hover:bg-white/5'}`}
+                    >
+                        Snowball (Lowest Loan First)
+                    </button>
+                </Tooltip>
+                 <Tooltip text="Simultaneous Method: After your home is paid off, your surplus cashflow is split proportionally among all investment loans. This pays down all properties at the same time, though it may feel slower as you don't get the 'quick win' of paying off a single loan.">
+                    <button 
+                        onClick={() => handleStrategyChange('simultaneous')}
+                        className={`w-full py-2 px-4 rounded-full text-sm font-semibold transition-colors ${payoffStrategy === 'simultaneous' ? 'bg-indigo-600 text-white' : 'text-[var(--text-color-muted)] hover:bg-white/5'}`}
+                    >
+                        Simultaneous Payoff
+                    </button>
+                </Tooltip>
             </div>
-            <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Snowball targets one loan at a time for psychological wins. Simultaneous pays all loans proportionally.</p>
         </Card>
         
         {payoffStrategy === 'snowball' && (
@@ -181,15 +187,16 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
                     <Card title="Visualizing the Snowball: Targeted Loan Payoff vs. Total Bank Debt">
                         <div className="text-sm text-[var(--text-color-muted)] mb-4 space-y-2">
                             <p>This chart provides a unique view of the snowball strategy in action:</p>
-                            <ul className="list-disc pl-5 space-y-1">
-                                <li>The <strong>Bank Debt (grey line)</strong> shows your total portfolio debt over time with a standard bank loan.</li>
-                                <li>The <strong>Crown Targeted Loan (purple line)</strong> visualizes the snowball effect. It shows the balance of the single loan being actively targeted at any given time. Watch as it pays off one loan, drops to zero, then jumps up to target the next investment loan, creating a powerful "sawtooth" payoff pattern. This is why you will see the line go up after a loan is paid off, as the strategy acquires its next target.</li>
+                             <ul className="list-disc pl-5 space-y-1">
+                                <li>The <strong>Bank Debt (grey area)</strong> shows your total portfolio debt over time with a standard bank loan.</li>
+                                <li>The <strong>Crown Total Debt (green dotted line)</strong> shows the smooth downward trajectory of your entire portfolio debt using the Crown Money strategy.</li>
+                                <li>The <strong>Crown Targeted Loan (purple area)</strong> visualizes the snowball effect. It shows the balance of the single loan being actively targeted at any given time. Watch as it pays off one loan, drops to zero, then jumps up to target the next investment loan, creating a powerful "sawtooth" payoff pattern.</li>
                             </ul>
-                            <p className="mt-2">This illustrates how the Crown Money strategy focuses its entire power on one debt at a time to eliminate it rapidly before moving to the next.</p>
+                            <p className="mt-2">This illustrates how the Crown Money strategy reduces your overall debt while focusing its entire power on one debt at a time to eliminate it rapidly before moving to the next.</p>
                         </div>
                         <div className="w-full h-[500px]">
                             <ResponsiveContainer>
-                                <AreaChart data={totalDebtData} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
+                                <ComposedChart data={totalDebtData} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                                     <XAxis 
                                         dataKey="year" 
@@ -221,6 +228,7 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
                                     </defs>
                                     <Area type="monotone" dataKey="Bank" name="Bank Total Debt" stroke="var(--chart-color-bank)" fillOpacity={1} fill="url(#colorBankInvestment)" strokeWidth={2} dot={false} />
                                     <Area type="monotone" dataKey="Crown Money Snowball" name="Crown Targeted Loan" stroke="var(--chart-color-crown)" fillOpacity={1} fill="url(#colorTrajectory)" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="Crown Money" name="Crown Total Debt" stroke="var(--chart-color-wealth)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                                     
                                     {/* Loan Start Dots */}
                                     {startEvent && (
@@ -246,7 +254,7 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
                                         </ReferenceDot>
                                     ))}
 
-                                </AreaChart>
+                                </ComposedChart>
                             </ResponsiveContainer>
                         </div>
                     </Card>
@@ -344,11 +352,21 @@ const Tab_InvestmentOODC: React.FC<Props> = ({ appState, setAppState, calculatio
         <Card title="Total Savings & Final Timeline">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="p-4 text-center bg-black/10 dark:bg-white/5 rounded-lg">
-                    <h4 className="text-base text-[var(--text-color-muted)]">Total Interest Saved on Investments</h4>
+                    <div className="flex items-center justify-center gap-1">
+                        <h4 className="text-base text-[var(--text-color-muted)]">Total Interest Saved on Investments</h4>
+                        <Tooltip text="CALCULATION: (Total interest paid on all investment loans with the Bank) - (Total interest paid on all investment loans with Crown Money).">
+                            <InfoIcon className="h-4 w-4" />
+                        </Tooltip>
+                    </div>
                     <p className="text-4xl font-bold my-2 text-[var(--chart-color-crown)]">{formatCurrency(totalInvestmentInterestSaved)}</p>
                 </div>
                  <div className="p-4 text-center bg-black/10 dark:bg-white/5 rounded-lg">
-                    <h4 className="text-base text-[var(--text-color-muted)]">Completely Debt Free (Home + Investments) in:</h4>
+                    <div className="flex items-center justify-center gap-1">
+                        <h4 className="text-base text-[var(--text-color-muted)]">Completely Debt Free in:</h4>
+                        <Tooltip text="CALCULATION: (Crown Money Home Loan Payoff Time) + (Crown Money Investment Loans Payoff Time). This is your final debt-free date for your entire portfolio.">
+                            <InfoIcon className="h-4 w-4" />
+                        </Tooltip>
+                    </div>
                     <p className="text-4xl font-bold my-2 text-[var(--chart-color-crown)]">{formatYears(totalDebtFreeYears)} Years</p>
                 </div>
             </div>

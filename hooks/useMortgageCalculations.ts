@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AppState, LoanDetails, Frequency, AmortizationDataPoint, LoanSummary, FutureChange, InvestmentProperty, LoanFrequency, FutureLumpSum } from '../types';
+import { AppState, LoanDetails, Frequency, AmortizationDataPoint, LoanSummary, FutureChange, InvestmentProperty, LoanFrequency, FutureLumpSum, OtherDebt } from '../types';
 
 const MONTHS_IN_YEAR = 12;
 const MAX_YEARS = 100;
@@ -263,13 +263,21 @@ export const calculateAmortization = (
 
 export const useMortgageCalculations = (appState: AppState) => {
     const { 
-        loan, incomes, expenses, investmentProperties, futureChanges, futureLumpSums, 
+        loan, incomes, expenses, otherDebts, investmentProperties, futureChanges, futureLumpSums, 
         investmentAmountPercentage, investmentGrowthRate, idealRetirementAge, 
         propertyGrowthRate, crownMoneyInterestRate, payoffStrategy, people,
         debtRecyclingEnabled, debtRecyclingInvestmentRate, debtRecyclingLoanInterestRate, marginalTaxRate, debtRecyclingPercentage
     } = appState;
 
     const youngestPersonAge = useMemo(() => Math.min(...people.map(p => p.age)), [people]);
+
+    const totalInitialDebt = useMemo(() => {
+        return loan.amount + otherDebts.reduce((sum, debt) => sum + debt.amount, 0);
+    }, [loan.amount, otherDebts]);
+
+    const totalInitialNetDebt = useMemo(() => {
+        return totalInitialDebt - (loan.offsetBalance || 0);
+    }, [totalInitialDebt, loan.offsetBalance]);
 
     const budgetCalculations = useMemo(() => {
         const investmentPropertiesNetCashflow = investmentProperties.reduce((total, prop) => {
@@ -281,62 +289,187 @@ export const useMortgageCalculations = (appState: AppState) => {
         }, 0);
         
         const totalMonthlyIncome = incomes.reduce((sum, income) => sum + getMonthlyAmount(income.amount, income.frequency), 0) + Math.max(0, investmentPropertiesNetCashflow);
-        const totalMonthlyExpenses = expenses.reduce((sum, expense) => sum + getMonthlyAmount(expense.amount, expense.frequency), 0) + Math.abs(Math.min(0, investmentPropertiesNetCashflow));
-
-        const totalGrossMonthlyIncome = incomes.reduce((sum, income) => sum + getMonthlyAmount(income.amount, income.frequency), 0) + 
-                                        investmentProperties.reduce((sum, prop) => {
-                                            if (prop.isFuture) return sum;
-                                            return sum + getMonthlyAmount(prop.rentalIncome, prop.rentalIncomeFrequency);
-                                        }, 0);
-
-        const totalNonLoanMonthlyExpenses = expenses.reduce((sum, expense) => sum + getMonthlyAmount(expense.amount, expense.frequency), 0) +
-                                            investmentProperties.reduce((sum, prop) => {
-                                                if (prop.isFuture) return sum;
-                                                const propExpenses = prop.expenses.reduce((expSum, exp) => expSum + getMonthlyAmount(exp.amount, exp.frequency), 0);
-                                                return sum + propExpenses;
-                                            }, 0);
         
-        const totalDebtServicingCapacity = totalGrossMonthlyIncome - totalNonLoanMonthlyExpenses;
+        const totalMonthlyLivingExpenses = expenses.reduce((sum, expense) => sum + getMonthlyAmount(expense.amount, expense.frequency), 0);
         
+        const bankScenarioOtherDebtRepayments = otherDebts.reduce((sum, debt) => sum + getMonthlyAmount(debt.repayment, debt.frequency), 0);
+        
+        // Per business rule, Total Monthly Expenses should NOT include debt repayments.
+        const totalMonthlyExpenses = totalMonthlyLivingExpenses + Math.abs(Math.min(0, investmentPropertiesNetCashflow));
+        
+        // For Crown, the surplus is calculated BEFORE any debt repayments, as the surplus is what pays the debts.
+        const surplus = totalMonthlyIncome - totalMonthlyLivingExpenses;
+
         return {
             investmentPropertiesNetCashflow,
             totalMonthlyIncome,
             totalMonthlyExpenses,
-            totalDebtServicingCapacity
+            totalMonthlyLivingExpenses,
+            surplus,
+            bankScenarioOtherDebtRepayments,
         };
-    }, [incomes, expenses, investmentProperties]);
+    }, [incomes, expenses, investmentProperties, otherDebts]);
 
     const bankLoanCalculation = useMemo(() => {
-        const bankLoanDetailsForComparison = {
-            ...loan,
-            amount: loan.amount,
-            offsetBalance: loan.offsetBalance || 0,
+        // 1. Calculate primary loan amortization (netted against offset)
+        const primaryLoanDetails = { 
+            ...loan, 
+            amount: loan.amount - (loan.offsetBalance || 0),
+            offsetBalance: 0, 
         };
-        return calculateAmortization(bankLoanDetailsForComparison, { futureLumpSums, strategy: 'bank' });
-    }, [loan, futureLumpSums]);
+        // The bank's calculation should NOT be affected by future income/expense changes, only by lump sums.
+        const primaryLoanCalc = calculateAmortization(primaryLoanDetails, { futureLumpSums, strategy: 'bank' });
+    
+        // 2. Calculate amortization for each "Other Debt" separately
+        const otherDebtCalcs = otherDebts.map(debt => {
+            return calculateAmortization({
+                amount: debt.amount,
+                interestRate: debt.interestRate,
+                repayment: debt.repayment,
+                frequency: debt.frequency,
+                offsetBalance: 0,
+                loanTerm: debt.remainingTerm,
+            }, { strategy: 'bank' });
+        });
+    
+        // 3. Combine results for a total portfolio view
+        const allSchedules = [primaryLoanCalc, ...otherDebtCalcs];
+        const maxMonths = Math.max(...allSchedules.map(calc => calc.amortizationSchedule.length));
+    
+        const isUnpayable = allSchedules.some(calc => calc.termInYears === Infinity);
+        if (isUnpayable || maxMonths === 0) {
+            return {
+                termInYears: Infinity, totalInterest: Infinity, totalPaid: Infinity, amortizationSchedule: [],
+                primaryLoanInterest: Infinity, otherDebtsInterest: Infinity,
+                year1PrimaryLoanInterest: Infinity, year1OtherDebtsInterest: Infinity,
+                bankOtherDebtsMaxTerm: Infinity,
+                year1PrimaryLoanPrincipal: 0, year1OtherDebtsPrincipal: 0
+            };
+        }
+    
+        const combinedSchedule: AmortizationDataPoint[] = [];
+        let totalInterest = 0;
+        let totalPaid = 0;
+    
+        for (let month = 1; month <= maxMonths; month++) {
+            let monthInterest = 0;
+            let monthPrincipal = 0;
+            let monthRemaining = 0;
+    
+            allSchedules.forEach(calc => {
+                const dataPoint = calc.amortizationSchedule[month - 1];
+                if (dataPoint) {
+                    monthInterest += dataPoint.interestPaid;
+                    monthPrincipal += dataPoint.principalPaid;
+                    monthRemaining += dataPoint.remainingBalance;
+                }
+            });
+            
+            totalInterest += monthInterest;
+            totalPaid += monthInterest + monthPrincipal;
+    
+            combinedSchedule.push({
+                month,
+                interestPaid: primaryLoanCalc.amortizationSchedule[month-1]?.interestPaid ?? 0,
+                principalPaid: primaryLoanCalc.amortizationSchedule[month-1]?.principalPaid ?? 0,
+                remainingBalance: primaryLoanCalc.amortizationSchedule[month-1]?.remainingBalance ?? 0,
+                offsetBalance: primaryLoanCalc.amortizationSchedule[month-1]?.offsetBalance ?? 0,
+                totalInterestPaid: monthInterest,
+                totalPrincipalPaid: monthPrincipal,
+                totalRemainingBalance: monthRemaining,
+            });
+        }
+        
+        const otherDebtsInterest = otherDebtCalcs.reduce((sum, calc) => sum + calc.totalInterest, 0);
+        const year1PrimaryLoanInterest = primaryLoanCalc.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.interestPaid, 0);
+        const year1OtherDebtsInterest = otherDebtCalcs.reduce((total, calc) => 
+            total + calc.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.interestPaid, 0), 0);
+        const bankOtherDebtsMaxTerm = Math.max(0, ...otherDebtCalcs.map(c => c.termInYears));
+
+        const year1PrimaryLoanPrincipal = primaryLoanCalc.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.principalPaid, 0);
+        const year1OtherDebtsPrincipal = otherDebtCalcs.reduce((total, calc) => 
+            total + calc.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.principalPaid, 0), 0);
+
+        return {
+            termInYears: maxMonths / 12, // The true term is when the LAST debt is paid
+            totalInterest: totalInterest,
+            totalPaid: totalPaid,
+            amortizationSchedule: combinedSchedule,
+            primaryLoanInterest: primaryLoanCalc.totalInterest,
+            otherDebtsInterest,
+            year1PrimaryLoanInterest,
+            year1OtherDebtsInterest,
+            bankOtherDebtsMaxTerm,
+            year1PrimaryLoanPrincipal,
+            year1OtherDebtsPrincipal,
+        };
+    }, [loan, otherDebts, futureLumpSums]);
 
     const crownMoneyLoanCalculation = useMemo(() => {
-        const { totalMonthlyIncome, totalMonthlyExpenses } = budgetCalculations;
-        const monthlyPrimaryLoanRepayment = getMonthlyAmount(loan.repayment, loan.frequency);
-        
-        const surplusAfterLivingAndInvestmentExpenses = totalMonthlyIncome - totalMonthlyExpenses;
-        const extraMonthlyPaymentForCrown = Math.max(0, surplusAfterLivingAndInvestmentExpenses - monthlyPrimaryLoanRepayment);
+        const { surplus } = budgetCalculations;
 
-        const netPrimaryLoanAmount = loan.amount - (loan.offsetBalance || 0);
+        if (surplus <= 0 && getMonthlyAmount(loan.repayment, loan.frequency) <= 0) {
+            return { termInYears: Infinity, totalInterest: Infinity, totalPaid: Infinity, amortizationSchedule: [], primaryLoanInterest: Infinity, otherDebtsInterest: 0, year1PrimaryLoanInterest: Infinity, year1OtherDebtsInterest: 0, year1PrimaryOnlyPrincipalPaid: 0 };
+        }
 
-        const crownLoanDetailsForPrimary: LoanDetails = {
-            ...loan,
-            amount: netPrimaryLoanAmount,
-            offsetBalance: 0,
+        // ALL other debts are consolidated.
+        const consolidatedAmount = otherDebts.reduce((sum, d) => sum + d.amount, 0);
+
+        // The repayment for Crown is effectively the entire surplus.
+        const crownLoanDetailsForCalc = {
+            amount: (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0),
             interestRate: crownMoneyInterestRate,
+            repayment: surplus, // The entire surplus is used for repayment.
+            frequency: 'monthly' as const,
+            offsetBalance: 0,
         };
-        return calculateAmortization(crownLoanDetailsForPrimary, {
-            extraMonthlyPayment: extraMonthlyPaymentForCrown,
+
+        const result = calculateAmortization(crownLoanDetailsForCalc, {
             futureChanges,
             futureLumpSums,
             strategy: 'crown'
         });
-    }, [loan, budgetCalculations, crownMoneyInterestRate, futureChanges, futureLumpSums]);
+
+        // Simulate first year for primary loan only to show comparison
+        const primaryOnlyLoanDetailsForCalc = {
+            amount: (loan.amount) - (loan.offsetBalance || 0),
+            interestRate: crownMoneyInterestRate,
+            repayment: surplus, 
+            frequency: 'monthly' as const,
+            offsetBalance: 0,
+        };
+        const primaryOnlyResult = calculateAmortization(primaryOnlyLoanDetailsForCalc, {
+            futureChanges,
+            futureLumpSums,
+            strategy: 'crown'
+        });
+
+        const year1PrimaryOnlyPrincipalPaid = primaryOnlyResult.termInYears !== Infinity 
+            ? primaryOnlyResult.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.principalPaid, 0)
+            : 0;
+
+        if (result.termInYears === Infinity) {
+            return { termInYears: Infinity, totalInterest: Infinity, totalPaid: Infinity, amortizationSchedule: [], primaryLoanInterest: Infinity, otherDebtsInterest: 0, year1PrimaryLoanInterest: Infinity, year1OtherDebtsInterest: 0, year1PrimaryOnlyPrincipalPaid: 0 };
+        }
+        
+        const year1PrimaryLoanInterest = result.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.interestPaid, 0);
+
+        return {
+            ...result,
+            primaryLoanInterest: result.totalInterest,
+            otherDebtsInterest: 0,
+            year1PrimaryLoanInterest: year1PrimaryLoanInterest,
+            year1OtherDebtsInterest: 0,
+            otherDebtPayoffDetails: [],
+            year1PrimaryOnlyPrincipalPaid,
+            amortizationSchedule: result.amortizationSchedule.map(point => ({
+                ...point,
+                totalInterestPaid: point.interestPaid,
+                totalPrincipalPaid: point.principalPaid,
+                totalRemainingBalance: point.remainingBalance,
+            }))
+        };
+    }, [loan, otherDebts, budgetCalculations, crownMoneyInterestRate, futureChanges, futureLumpSums]);
 
     const debtRecyclingCalculation = useMemo(() => {
         const { totalMonthlyIncome, totalMonthlyExpenses } = budgetCalculations;
@@ -393,8 +526,8 @@ export const useMortgageCalculations = (appState: AppState) => {
             const primaryPayoffMonths = Math.ceil(crownMoneyLoanCalculation.termInYears * 12);
             payoffBreakpoints.push({ year: crownMoneyLoanCalculation.termInYears, age: youngestPersonAge + crownMoneyLoanCalculation.termInYears, label: 'Primary Home Paid Off' });
 
-            const { totalMonthlyIncome, totalMonthlyExpenses } = budgetCalculations;
-            const investmentSnowballPayment = Math.max(0, totalMonthlyIncome - totalMonthlyExpenses);
+            const { surplus } = budgetCalculations;
+            const investmentSnowballPayment = Math.max(0, surplus);
 
             if (payoffStrategy === 'snowball') {
                 let cumulativeMonthsOffset = primaryPayoffMonths;
@@ -480,13 +613,13 @@ export const useMortgageCalculations = (appState: AppState) => {
     }, [investmentProperties, crownMoneyLoanCalculation, payoffStrategy, youngestPersonAge, budgetCalculations]);
 
     const wealthCalculations = useMemo(() => {
-        const { totalDebtServicingCapacity } = budgetCalculations;
+        const { surplus } = budgetCalculations;
         const wealthCalcs = (endAge: number) => {
             let wealth = 0, cashInHand = 0, homeEquity = 0;
             const crownPayoffMonths = crownMoneyLoanCalculation.termInYears * 12;
             
             if (isFinite(crownPayoffMonths)) {
-                const monthlyInvestmentPower = totalDebtServicingCapacity;
+                const monthlyInvestmentPower = surplus;
                 const monthlyInvestment = monthlyInvestmentPower * (investmentAmountPercentage / 100);
                 const monthlyCash = monthlyInvestmentPower - monthlyInvestment;
                 const investmentMonths = (endAge - (youngestPersonAge + crownMoneyLoanCalculation.termInYears)) * 12;
@@ -498,7 +631,7 @@ export const useMortgageCalculations = (appState: AppState) => {
                 }
             }
             const homeValueYears = endAge - youngestPersonAge;
-            const initialPropertyValue = loan.amount / (1 - 0.2); 
+            const initialPropertyValue = loan.propertyValue; 
             homeEquity = initialPropertyValue * Math.pow(1 + (propertyGrowthRate / 100), homeValueYears);
             return { wealth, cashInHand, homeEquity };
         };
@@ -506,13 +639,13 @@ export const useMortgageCalculations = (appState: AppState) => {
         const wealthProjection = isFinite(bankDebtFreeAge) ? wealthCalcs(bankDebtFreeAge) : { wealth: 0, cashInHand: 0, homeEquity: 0 };
         const retirementWealthProjection = wealthCalcs(idealRetirementAge);
         return { wealthProjection, retirementWealthProjection, wealthCalcs };
-    }, [budgetCalculations, crownMoneyLoanCalculation, investmentAmountPercentage, investmentGrowthRate, idealRetirementAge, youngestPersonAge, loan.amount, propertyGrowthRate, bankLoanCalculation.termInYears]);
+    }, [budgetCalculations, crownMoneyLoanCalculation, investmentAmountPercentage, investmentGrowthRate, idealRetirementAge, youngestPersonAge, loan.propertyValue, propertyGrowthRate, bankLoanCalculation.termInYears]);
 
     const netWorthProjection = useMemo(() => {
         const { wealthCalcs } = wealthCalculations;
         const projection: {age: number, bank: number, crown: number}[] = [];
         const startAge = youngestPersonAge;
-        const initialPropertyValue = (loan.amount / (1 - 0.2));
+        const initialPropertyValue = loan.propertyValue;
 
         for (let age = startAge; age <= idealRetirementAge; age++) {
             const yearsElapsed = age - startAge;
@@ -520,7 +653,7 @@ export const useMortgageCalculations = (appState: AppState) => {
             const currentHomeValue = initialPropertyValue * Math.pow(1 + (propertyGrowthRate / 100), yearsElapsed);
 
             // --- BANK SCENARIO ---
-            const bankDebt = bankLoanCalculation.amortizationSchedule[month-1]?.remainingBalance ?? (month > bankLoanCalculation.termInYears * 12 ? 0 : loan.amount);
+            const bankDebt = bankLoanCalculation.amortizationSchedule[month-1]?.totalRemainingBalance ?? (month > bankLoanCalculation.termInYears * 12 ? 0 : totalInitialNetDebt);
             let bankNetWorth = currentHomeValue - bankDebt; // Starts with home equity
             
             // Add cash accumulated after loan payoff
@@ -533,7 +666,7 @@ export const useMortgageCalculations = (appState: AppState) => {
             }
 
             // --- CROWN SCENARIO ---
-            const crownDebt = crownMoneyLoanCalculation.amortizationSchedule[month-1]?.remainingBalance ?? (month > crownMoneyLoanCalculation.termInYears * 12 ? 0 : loan.amount);
+            const crownDebt = crownMoneyLoanCalculation.amortizationSchedule[month-1]?.totalRemainingBalance ?? (month > crownMoneyLoanCalculation.termInYears * 12 ? 0 : totalInitialNetDebt);
             let crownNetWorth = currentHomeValue - crownDebt;
             
             if (age > youngestPersonAge + crownMoneyLoanCalculation.termInYears) {
@@ -542,65 +675,93 @@ export const useMortgageCalculations = (appState: AppState) => {
             projection.push({ age, bank: bankNetWorth, crown: crownNetWorth });
         }
         return projection;
-    }, [wealthCalculations, youngestPersonAge, loan.amount, propertyGrowthRate, bankLoanCalculation, crownMoneyLoanCalculation, idealRetirementAge, loan.repayment, loan.frequency]);
-
+    }, [wealthCalculations, youngestPersonAge, loan.propertyValue, propertyGrowthRate, bankLoanCalculation, crownMoneyLoanCalculation, idealRetirementAge, loan.repayment, loan.frequency, totalInitialNetDebt]);
+    
     const totalDebtData = useMemo(() => {
-        const bankSchedules = [bankLoanCalculation, ...investmentLoanCalculations.investmentPayoffSchedule.map((p: any) => p.bank)].filter(s => s?.amortizationSchedule?.length > 0);
-        const crownSchedules = [crownMoneyLoanCalculation, ...investmentLoanCalculations.investmentPayoffSchedule.map((p: any) => p.crown)].filter(s => s?.amortizationSchedule?.length > 0);
-        const maxMonths = Math.ceil(Math.max(...[...bankSchedules, ...crownSchedules].map(s => s.amortizationSchedule[s.amortizationSchedule.length - 1]?.month || 0)));
+        const maxMonths = Math.ceil(Math.max(
+            bankLoanCalculation.amortizationSchedule.length,
+            crownMoneyLoanCalculation.amortizationSchedule.length
+        ));
+    
         if (!isFinite(maxMonths) || maxMonths === 0) return [];
-        
-        const data = [];
-        const totalInvestmentOffset = investmentProperties.reduce((sum, p) => sum + (p.offsetBalance || 0), 0);
-        const initialNetDebt = (loan.amount) + (investmentLoanCalculations.totalInvestmentDebt);
-        const initialPrimaryNetDebt = loan.amount;
-
-        for (let month = 0; month <= maxMonths; month++) {
+    
+        const bankStartDebt = (loan.amount - (loan.offsetBalance || 0));
+    
+        const consolidatedAmount = otherDebts.reduce((sum, debt) => sum + debt.amount, 0);
+        const crownStartDebt = (loan.amount - (loan.offsetBalance || 0)) + consolidatedAmount;
+    
+        const data = [{
+            year: 0,
+            age: youngestPersonAge,
+            'Bank': bankStartDebt,
+            'Crown Money': crownStartDebt,
+        }];
+    
+        for (let month = 1; month <= maxMonths; month++) {
             const year = month / 12;
             const age = youngestPersonAge + year;
-            if (month === 0) {
-                data.push({ year: 0, age: youngestPersonAge, Bank: initialNetDebt, 'Crown Money': initialNetDebt, 'Crown Money Snowball': initialPrimaryNetDebt });
-                continue;
-            }
-            let totalBankDebt = bankSchedules.reduce((sum, s) => sum + (s.amortizationSchedule?.[month - 1]?.remainingBalance ?? 0), 0);
-            let totalCrownDebt = crownSchedules.reduce((sum, s) => sum + (s.amortizationSchedule?.[month - 1]?.remainingBalance ?? 0), 0);
-            
-            let crownSnowballDebt = 0;
+    
+            const bankDebt = bankLoanCalculation.amortizationSchedule[month - 1]?.remainingBalance ?? 0;
+            const crownDebt = crownMoneyLoanCalculation.amortizationSchedule[month - 1]?.totalRemainingBalance ?? 0;
+    
+            data.push({
+                year: parseFloat(year.toFixed(2)),
+                age: age,
+                'Bank': bankDebt > 0 ? bankDebt : 0,
+                'Crown Money': crownDebt > 0 ? crownDebt : 0,
+            });
+        }
+    
+        // Add the 'Crown Money Snowball' series
+        if (payoffStrategy === 'snowball' && investmentLoanCalculations.investmentPayoffSchedule) {
             const primaryPayoffMonths = Math.ceil(crownMoneyLoanCalculation.termInYears * 12);
-            if (month <= primaryPayoffMonths) {
-                crownSnowballDebt = crownMoneyLoanCalculation.amortizationSchedule[month - 1]?.remainingBalance ?? 0;
-            } else {
-                let activeLoanFound = false;
-                for (const p of investmentLoanCalculations.investmentPayoffSchedule) {
-                    if (!p.crown.standaloneCalc) continue;
-                    const startMonth = Math.ceil(p.crown.startYear * 12);
-                    const endMonth = startMonth + Math.ceil(p.crown.durationYears * 12);
-                    if (month > startMonth && month <= endMonth) {
-                        const monthInSegment = month - startMonth;
-                        const balance = p.crown.standaloneCalc.amortizationSchedule[monthInSegment - 1]?.remainingBalance;
-                        if (balance !== undefined) {
-                            crownSnowballDebt = balance;
-                            activeLoanFound = true;
+            const sortedPayoffSchedule = investmentLoanCalculations.investmentPayoffSchedule.sort((a, b) => a.crown.startYear - b.crown.startYear);
+    
+            data.forEach((dataPoint, index) => {
+                const month = index;
+                if (month === 0) {
+                    dataPoint['Crown Money Snowball'] = crownStartDebt;
+                    return;
+                }
+    
+                if (month <= primaryPayoffMonths) {
+                    // During primary loan payoff, it shows the primary loan balance
+                    dataPoint['Crown Money Snowball'] = crownMoneyLoanCalculation.amortizationSchedule[month - 1]?.remainingBalance ?? 0;
+                } else {
+                    // During investment loan payoff
+                    let snowballValue = 0;
+                    let targetProp = null;
+                    for (const prop of sortedPayoffSchedule) {
+                        const startMonth = Math.floor(prop.crown.startYear * 12);
+                        const endMonth = startMonth + Math.ceil(prop.crown.durationYears * 12);
+                        if (month > startMonth && month <= endMonth) {
+                            targetProp = prop;
                             break;
                         }
                     }
+    
+                    if (targetProp) {
+                        const startMonthOfTarget = Math.floor(targetProp.crown.startYear * 12);
+                        const monthIntoTargetPayoff = month - startMonthOfTarget;
+                        snowballValue = targetProp.crown.standaloneCalc.amortizationSchedule[monthIntoTargetPayoff - 1]?.remainingBalance ?? 0;
+                    }
+                    dataPoint['Crown Money Snowball'] = snowballValue;
                 }
-                if (!activeLoanFound) crownSnowballDebt = 0;
-            }
-            data.push({ year: parseFloat(year.toFixed(1)), age: parseFloat(age.toFixed(1)), Bank: totalBankDebt, 'Crown Money': totalCrownDebt, 'Crown Money Snowball': crownSnowballDebt });
+            });
         }
+    
         return data;
-    }, [bankLoanCalculation, crownMoneyLoanCalculation, investmentLoanCalculations, youngestPersonAge, loan, investmentProperties]);
+    }, [bankLoanCalculation, crownMoneyLoanCalculation, youngestPersonAge, loan.amount, loan.offsetBalance, otherDebts, investmentLoanCalculations, payoffStrategy]);
 
     const retirementEquity = useMemo(() => {
         const retirementYearsElapsed = idealRetirementAge - youngestPersonAge;
         const retirementMonthIndex = Math.max(0, retirementYearsElapsed * 12 - 1);
-        const initialPropertyValueForBank = loan.amount / (1 - 0.2);
+        const initialPropertyValueForBank = loan.propertyValue;
         const homeValueAtRetirement = initialPropertyValueForBank * Math.pow(1 + (propertyGrowthRate / 100), retirementYearsElapsed);
         const bankDebtAtRetirement = bankLoanCalculation.amortizationSchedule[retirementMonthIndex]?.remainingBalance ?? (retirementMonthIndex + 1 > bankLoanCalculation.termInYears * 12 ? 0 : loan.amount);
         const bankEquityAtRetirement = homeValueAtRetirement - bankDebtAtRetirement;
         return { homeValueAtRetirement, bankDebtAtRetirement, bankEquityAtRetirement };
-    }, [idealRetirementAge, youngestPersonAge, loan.amount, propertyGrowthRate, bankLoanCalculation]);
+    }, [idealRetirementAge, youngestPersonAge, loan.propertyValue, propertyGrowthRate, bankLoanCalculation]);
 
     const bankRetirementPosition = useMemo(() => {
         if (!isFinite(bankLoanCalculation.termInYears)) {
@@ -636,6 +797,8 @@ export const useMortgageCalculations = (appState: AppState) => {
         netWorthProjection,
         totalDebtData,
         ...retirementEquity,
-        ...bankRetirementPosition
-    }), [people, budgetCalculations, bankLoanCalculation, crownMoneyLoanCalculation, debtRecyclingCalculation, investmentLoanCalculations, wealthCalculations, netWorthProjection, totalDebtData, retirementEquity, bankRetirementPosition]);
+        ...bankRetirementPosition,
+        totalInitialDebt,
+        totalInitialNetDebt,
+    }), [people, budgetCalculations, bankLoanCalculation, crownMoneyLoanCalculation, debtRecyclingCalculation, investmentLoanCalculations, wealthCalculations, netWorthProjection, totalDebtData, retirementEquity, bankRetirementPosition, totalInitialDebt, totalInitialNetDebt]);
 };
