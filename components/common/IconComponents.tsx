@@ -235,3 +235,27 @@ export const PercentIcon = (props: React.SVGProps<SVGSVGElement>) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 17.25a2.25 2.25 0 11-3.182-3.182 2.25 2.25 0 013.182 3.182z" />
     </svg>
 );
+
+export const EmailIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+    </svg>
+);
+
+export const FacebookIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M12 2.04c-5.52 0-10 4.48-10 10s4.48 10 10 10 10-4.48 10-10-4.48-10-10-10zm2.25 10.5h-1.5v5.5h-2.5v-5.5h-1.25v-2h1.25v-1.16c0-1.09.52-2.84 2.84-2.84h1.66v2h-1c-.18 0-.42.09-.42.46v1.54h1.42l-.25 2z"/>
+    </svg>
+);
+
+export const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M22.46 6c-.6.27-1.25.46-1.93.53.68-.41 1.2-1.06 1.45-1.85-.64.38-1.35.65-2.1.8-.6-.64-1.47-1.04-2.43-1.04-1.84 0-3.33 1.49-3.33 3.33 0 .26.03.52.09.76-2.77-.14-5.22-1.46-6.86-3.48-.28.49-.44 1.06-.44 1.67 0 1.15.59 2.17 1.48 2.76-.54-.02-1.05-.17-1.5-.41v.04c0 1.61 1.15 2.95 2.66 3.25-.28.08-.57.12-.87.12-.21 0-.42-.02-.62-.06.42 1.32 1.64 2.28 3.1 2.3-1.13.89-2.57 1.42-4.12 1.42-.27 0-.53-.02-.79-.05 1.47.94 3.22 1.49 5.1 1.49 6.12 0 9.47-5.06 9.47-9.47 0-.14 0-.29-.01-.43.65-.47 1.21-1.06 1.66-1.72z"/>
+    </svg>
+);
+
+export const LinkedInIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zm-11.25 6.5H5.5v7h2.25v-7zm-1.12-2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM18.5 10.25c-1.21 0-2.05.67-2.38 1.25h-.03v-1h-2.22v7h2.25v-3.5c0-.92.33-1.54 1.25-1.54.89 0 1.12.69 1.12 1.59v3.45h2.25v-3.75c0-2.06-1.12-3.25-2.75-3.25z"/>
+    </svg>
+);

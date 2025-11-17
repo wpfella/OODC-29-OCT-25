@@ -754,6 +754,70 @@ export const useMortgageCalculations = (appState: AppState) => {
 
     }, [idealRetirementAge, youngestPersonAge, bankLoanCalculation.termInYears, loan.repayment, loan.frequency, retirementEquity.bankEquityAtRetirement]);
 
+    const reportCalculations = useMemo(() => {
+        const calculatePastPerformance = (loanDetails: LoanDetails, months: number) => {
+            const { amount, interestRate, repayment, frequency } = loanDetails;
+            if (amount <= 0 || interestRate <= 0 || repayment <= 0) {
+                return { startingBalance: amount, endingBalance: amount, interestPaid: 0, principalPaid: 0 };
+            }
+            const monthlyRate = interestRate / 100 / 12;
+            const monthlyPayment = getMonthlyAmount(repayment, frequency);
+    
+            let startingBalance = amount;
+            for (let i = 0; i < months; i++) {
+                startingBalance = (startingBalance + monthlyPayment) / (1 + monthlyRate);
+            }
+    
+            let balance = startingBalance;
+            let totalInterestPaid = 0;
+            let totalPrincipalPaid = 0;
+            for (let i = 0; i < months; i++) {
+                const interest = balance * monthlyRate;
+                const principal = monthlyPayment - interest;
+                balance -= principal;
+                totalInterestPaid += interest;
+                totalPrincipalPaid += principal;
+            }
+    
+            return {
+                startingBalance: startingBalance,
+                endingBalance: balance,
+                interestPaid: totalInterestPaid,
+                principalPaid: totalPrincipalPaid
+            };
+        };
+    
+        const getFuturePerformance = (schedule: AmortizationDataPoint[], months: number, startingBalance: number) => {
+             if (!schedule || schedule.length === 0) {
+                return { interestPaid: 0, principalPaid: 0, endingBalance: startingBalance, startingBalance };
+            }
+            const actualMonths = Math.min(months, schedule.length);
+            const periodSchedule = schedule.slice(0, actualMonths);
+            if (periodSchedule.length === 0) {
+                return { interestPaid: 0, principalPaid: 0, endingBalance: startingBalance, startingBalance };
+            }
+            const interestPaid = periodSchedule.reduce((sum, item) => sum + item.interestPaid, 0);
+            const principalPaid = periodSchedule.reduce((sum, item) => sum + item.principalPaid, 0);
+            const endingBalance = periodSchedule[actualMonths - 1]?.totalRemainingBalance ?? startingBalance - principalPaid;
+    
+            return { startingBalance, endingBalance, interestPaid, principalPaid };
+        };
+        
+        const consolidatedAmount = otherDebts.reduce((sum, d) => sum + d.amount, 0);
+        const crownStartDebt = (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0);
+
+        const periods: (3 | 6 | 12)[] = [3, 6, 12];
+        const past = {} as any;
+        const future = {} as any;
+        periods.forEach(p => {
+            past[p] = calculatePastPerformance(loan, p);
+            future[p] = getFuturePerformance(crownMoneyLoanCalculation.amortizationSchedule, p, crownStartDebt);
+        });
+
+        return { past, future };
+
+    }, [loan, crownMoneyLoanCalculation, otherDebts]);
+
     return useMemo(() => ({
         getMonthlyAmount,
         calculatePIPayment,
@@ -772,5 +836,6 @@ export const useMortgageCalculations = (appState: AppState) => {
         ...bankRetirementPosition,
         totalInitialDebt,
         totalInitialNetDebt,
-    }), [people, budgetCalculations, bankLoanCalculation, crownMoneyLoanCalculation, debtRecyclingCalculation, investmentLoanCalculations, wealthCalculations, debtRecyclingWealthProjection, netWorthProjection, totalDebtData, retirementEquity, bankRetirementPosition, totalInitialDebt, totalInitialNetDebt]);
+        reportCalculations,
+    }), [people, budgetCalculations, bankLoanCalculation, crownMoneyLoanCalculation, debtRecyclingCalculation, investmentLoanCalculations, wealthCalculations, debtRecyclingWealthProjection, netWorthProjection, totalDebtData, retirementEquity, bankRetirementPosition, totalInitialDebt, totalInitialNetDebt, reportCalculations]);
 };

@@ -126,6 +126,7 @@ export enum Tab {
   InvestmentOODC,
   DebtRecycling,
   In2Wealth,
+  Reports,
   Summary,
 }
 

@@ -8,6 +8,7 @@ import Tab4_OODC from './components/Tab4_OODC';
 import Tab_InvestmentOODC from './components/Tab_InvestmentOODC';
 import Tab_DebtRecycling from './components/Tab_DebtRecycling';
 import Tab_In2Wealth from './components/Tab_In2Wealth';
+import Tab_Reports, { Tab_Reports_Printable } from './components/Tab_Help';
 import Tab5_Summary from './components/Tab5_Summary';
 import { CrownLogo, SunIcon, MoonIcon, PrintIcon, DownloadIcon, SpeakerOnIcon, SpeakerOffIcon, CalculatorIcon, CodeBracketIcon, TrashIcon, CameraIcon, UndoIcon, SaveIcon, FolderOpenIcon, UploadIcon, ClipboardIcon } from './components/common/IconComponents';
 import { useMortgageCalculations } from './hooks/useMortgageCalculations';
@@ -204,6 +205,7 @@ const tabExplanations: Record<Tab, string> = {
     [Tab.InvestmentOODC]: "If you've got investment properties, this tab shows you how we'll tackle that debt after your home is paid off. We typically use the 'snowball' method, knocking over the smallest loans first to build momentum. You'll see how the entire portfolio gets paid off years ahead of the bank's schedule.",
     [Tab.DebtRecycling]: "Debt Recycling is a powerful strategy to build wealth while paying off your home loan. As you pay down your home loan principal, you can take out a new, tax-deductible investment loan for the same amount. This money is then invested. This tab shows how the net returns from your new investment can be used to accelerate your home loan payoff even further, getting you to the 'In 2 Wealth' stage much faster.",
     [Tab.In2Wealth]: "Right, you're debt-free! What's next? This is the 'In 2 Wealth' tab. Once your loan is gone, that massive repayment you were making is now yours to invest. Play around with your retirement age and investment strategy to see how you can build some serious long-term wealth for the future. Good on ya!",
+    [Tab.Reports]: "This is the Reports tab. Here you can generate a powerful comparison showing your performance over the last few months with your bank, versus what your next few months will look like with the Crown Money strategy. It's a great way to see the immediate impact of making the switch. You can also print, email, or share these reports directly from here.",
     [Tab.Summary]: "The Summary tab brings everything together into a neat, one-page report. It's got all the key numbers, comparisons, and outcomes. This is the perfect page to print out or save as a PDF to have a yarn with your family about your new financial future.",
 };
 
@@ -442,6 +444,7 @@ const App: React.FC = () => {
     { id: Tab.InvestmentOODC, label: 'Investment OODC', component: <Tab_InvestmentOODC appState={appState} setAppState={setAppState} calculations={calculations} /> },
     { id: Tab.DebtRecycling, label: 'Debt Recycling', component: <Tab_DebtRecycling appState={appState} setAppState={setAppState} calculations={calculations} /> },
     { id: Tab.In2Wealth, label: 'In 2 Wealth', component: <Tab_In2Wealth appState={appState} setAppState={setAppState} calculations={calculations} /> },
+    { id: Tab.Reports, label: 'Reports', component: <Tab_Reports appState={appState} setAppState={setAppState} calculations={calculations} /> },
     { id: Tab.Summary, label: 'Summary', component: <Tab5_Summary appState={appState} setAppState={setAppState} calculations={calculations} onUploadRecord={handleOpenZapierUploadModal} zapierStatus={zapierStatus} /> },
   ];
   
@@ -1001,6 +1004,15 @@ const App: React.FC = () => {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
+            .app-header, .app-nav, .app-main > div:not(.printable-report-container) {
+                display: none !important;
+            }
+            .active-tab-content {
+                display: none !important;
+            }
+            .printable-report-container {
+                display: block !important;
+            }
         }
       `}</style>
       
@@ -1020,7 +1032,7 @@ const App: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto">
-        <header className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-4 border-b border-[var(--border-color)] print:hidden">
+        <header className="app-header flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-4 border-b border-[var(--border-color)] print:hidden">
           <CrownLogo className="h-12 w-auto text-[var(--text-color)]" />
           <div className="flex items-center gap-2 overflow-x-auto flex-nowrap py-1 pr-2">
               <button onClick={handleOpenSaveModal} title="Save Scenario" className={buttonBaseClasses}>
@@ -1072,7 +1084,7 @@ const App: React.FC = () => {
         </header>
 
         <main className="bg-[var(--card-bg-color)] backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-2xl border border-[var(--border-color)] print:bg-transparent print:p-0 print:shadow-none print:border-none">
-          <nav className="mb-6 print:hidden">
+          <nav className="app-nav mb-6 print:hidden">
             <div className="border-b border-[var(--border-color)]">
               <div className="-mb-px flex flex-wrap space-x-2 sm:space-x-6 justify-center" aria-label="Tabs">
                 {tabs.map((tab) => (
@@ -1093,14 +1105,14 @@ const App: React.FC = () => {
             </div>
           </nav>
           
-          <div className="mt-4 print:hidden">
-            {tabs.find(tab => tab.id === activeTab)?.component}
+          <div className="app-main mt-4">
+             {tabs.map(tab => (
+                <div key={tab.id} className={activeTab === tab.id ? 'active-tab-content' : 'hidden'}>
+                    {tab.component}
+                </div>
+            ))}
           </div>
-          
-          <div className="hidden print:block">
-            <Tab5_Summary appState={appState} setAppState={setAppState} calculations={calculations} onUploadRecord={executeZapierSync} zapierStatus={zapierStatus} />
-          </div>
-          
+                    
           <div className="mt-8 pt-4 border-t border-[var(--border-color)] border-dashed text-xs text-[var(--text-color-muted)] print:text-gray-600 print:mt-6 print:pt-4 print:border-t print:border-gray-200">
             <h5 className="font-bold mb-2 text-[var(--text-color)] print:text-black">General Advice Disclaimer:</h5>
             <p className="mb-2">
@@ -1326,7 +1338,11 @@ const App: React.FC = () => {
       />
       
       <Assistant appState={appState} calculations={calculations} activeTab={tabs.find(t => t.id === activeTab)?.label || 'Current Loan'} />
-
+      
+      {/* This is the container for the printable report */}
+      <div className="printable-report-container hidden print:block">
+        <Tab_Reports_Printable appState={appState} setAppState={setAppState} calculations={calculations} />
+      </div>
     </div>
   );
 };
