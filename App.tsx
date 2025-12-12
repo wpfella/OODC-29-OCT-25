@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, Tab, ExpenseItem, InvestmentProperty, InvestmentPropertyExpense, FutureChange, FutureLumpSum, Person, IncomeItem, LoanDetails, Frequency, SavedScenario } from './types';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { AppState, Tab, ExpenseItem, SavedScenario } from './types';
 import Tab1_CurrentLoan from './components/Tab1_CurrentLoan';
 import Tab2_InterestBreakdown from './components/Tab2_InterestBreakdown';
 import Tab3_IncomeExpenses from './components/Tab3_IncomeExpenses';
@@ -10,50 +11,16 @@ import Tab_DebtRecycling from './components/Tab_DebtRecycling';
 import Tab_In2Wealth from './components/Tab_In2Wealth';
 import Tab_Reports from './components/Tab_Help';
 import Tab5_Summary from './components/Tab5_Summary';
-import { CrownLogo, SunIcon, MoonIcon, DownloadIcon, CalculatorIcon, TrashIcon, CameraIcon, UndoIcon, SaveIcon, FolderOpenIcon, UploadIcon, ClipboardIcon } from './components/common/IconComponents';
+import { CrownLogo, CalculatorIcon, TrashIcon, CameraIcon, UndoIcon, SaveIcon, FolderOpenIcon, UploadIcon, ClipboardIcon, DownloadIcon } from './components/common/IconComponents';
 import { useMortgageCalculations } from './hooks/useMortgageCalculations';
 import Toast from './components/common/Toast';
 import Modal from './components/common/Modal';
 import AdvancedCalculator from './components/common/AdvancedCalculator';
-import Assistant from './components/Assistant';
 import LoginScreen from './components/LoginScreen';
 import Notepad from './components/Notepad';
 import { useDebounce } from './hooks/useDebounce';
 
-const darkPalette = {
-    '--bg-color': '#250B40',
-    '--text-color': '#F8F8F8',
-    '--text-color-muted': '#b5a9c9',
-    '--card-bg-color': '#2f1850',
-    '--input-bg-color': 'rgba(255, 255, 255, 0.05)',
-    '--border-color': 'rgba(230, 222, 238, 0.2)',
-    '--input-border-color': 'rgba(230, 222, 238, 0.4)',
-    '--input-border-focus-color': '#c026d3',
-    '--title-color': '#c026d3',
-    '--button-bg-color': '#c026d3',
-    '--button-bg-hover-color': '#a21caf',
-    '--slider-track-color': 'rgba(230, 222, 238, 0.2)',
-    '--tooltip-bg-color': '#3e2661',
-    '--tooltip-text-color': '#FFFFFF',
-    '--tooltip-text-color-muted': '#e2e8f0',
-    '--tooltip-text-color-positive': '#86efac',
-    '--tooltip-text-color-negative': '#fca5a5',
-    '--chart-color-bank': '#94a3b8',
-    '--chart-color-crown': '#c026d3',
-    '--chart-color-interest': '#f472b6',
-    '--chart-color-principal': '#60a5fa',
-    '--chart-color-wealth': '#2dd4bf',
-    '--color-positive-bg': 'rgba(74, 222, 128, 0.1)',
-    '--color-positive-text': '#86efac',
-    '--color-negative-bg': 'rgba(248, 113, 113, 0.1)',
-    '--color-negative-text': '#f87171',
-    '--color-surplus-bg': 'rgba(129, 140, 248, 0.1)',
-    '--color-surplus-text': '#a5b4fc',
-    '--color-wealth-bg-gradient': 'linear-gradient(to right, rgba(192, 38, 211, 0.1), rgba(91, 33, 182, 0.1))',
-    '--date-picker-filter': 'invert(1)',
-    '--date-picker-color-scheme': 'dark',
-};
-
+// Only keeping the Light Palette as requested
 const lightPalette = {
     '--bg-color': '#F8F8F8',
     '--text-color': '#250B40',
@@ -112,16 +79,13 @@ export const initialAppState: AppState = {
     { id: 2, name: 'Person 2 Income', amount: 4000, frequency: 'monthly' },
   ],
   expenses: [
-    // FFF
     { id: 1, name: 'Food', amount: 200, category: 'FFF', frequency: 'weekly' },
     { id: 2, name: 'Fun', amount: 125, category: 'FFF', frequency: 'weekly' },
     { id: 3, name: 'Fuel', amount: 75, category: 'FFF', frequency: 'weekly' },
-    // Soft Expenses
     { id: 4, name: 'Holidays', amount: 3000, category: 'Soft Expenses', frequency: 'annually' },
     { id: 5, name: 'MISC', amount: 200, category: 'Soft Expenses', frequency: 'monthly' },
     { id: 6, name: 'Gifts', amount: 500, category: 'Soft Expenses', frequency: 'annually' },
     { id: 19, name: 'Clothes', amount: 100, category: 'Soft Expenses', frequency: 'monthly' },
-    // Hard Expenses
     { id: 7, name: 'Gas etc', amount: 300, category: 'Hard Expenses', frequency: 'quarterly' },
     { id: 8, name: 'Car Rego etc', amount: 800, category: 'Hard Expenses', frequency: 'annually' },
     { id: 9, name: 'Phone etc', amount: 150, category: 'Hard Expenses', frequency: 'monthly' },
@@ -204,11 +168,31 @@ const zapierMessages = {
 
 const sanitizeAppState = (state: AppState): AppState => {
     const safeState = { ...state };
-    // Cap Interest Rate to prevent infinite loops on load
+    // Safety Limits
     if (safeState.loan.interestRate > 20) safeState.loan.interestRate = 20;
     if (safeState.loan.interestRate < 0) safeState.loan.interestRate = 0;
     
-    // Cap Repayments (simple sanity check)
+    // Safety check: ensure repayment isn't unrealistically low compared to loan amount
+    const netLoan = Math.max(0, safeState.loan.amount - (safeState.loan.offsetBalance || 0));
+    if (netLoan > 0) {
+        const annualInterest = netLoan * (safeState.loan.interestRate / 100);
+        let annualRepayment = 0;
+        
+        switch (safeState.loan.frequency) {
+            case 'weekly': annualRepayment = safeState.loan.repayment * 52; break;
+            case 'fortnightly': annualRepayment = safeState.loan.repayment * 26; break;
+            case 'monthly': annualRepayment = safeState.loan.repayment * 12; break;
+            default: annualRepayment = safeState.loan.repayment * 12;
+        }
+
+        // If repayment is less than interest only (plus a tiny buffer), force correction
+        if (annualRepayment < annualInterest) { 
+             const safeMonthly = Math.ceil((annualInterest / 12) * 1.01);
+             safeState.loan.repayment = safeMonthly;
+             safeState.loan.frequency = 'monthly';
+        }
+    }
+    
     if (safeState.loan.repayment < 0) safeState.loan.repayment = 0;
     
     return safeState;
@@ -216,7 +200,6 @@ const sanitizeAppState = (state: AppState): AppState => {
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.CurrentLoan);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [zapierStatus, setZapierStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isZapierPasswordModalOpen, setIsZapierPasswordModalOpen] = useState(false);
@@ -246,18 +229,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (warningToast) {
-        const timer = setTimeout(() => setWarningToast(''), 8000); // Longer timeout for warnings
+        const timer = setTimeout(() => setWarningToast(''), 8000); 
         return () => clearTimeout(timer);
     }
   }, [warningToast]);
 
+  // Apply Light Theme only
   useEffect(() => {
-    const palette = theme === 'dark' ? darkPalette : lightPalette;
+    const palette = lightPalette;
     document.body.style.backgroundColor = palette['--bg-color'];
     for (const [key, value] of Object.entries(palette)) {
         document.documentElement.style.setProperty(key, value as string);
     }
-  }, [theme]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -275,6 +259,7 @@ const App: React.FC = () => {
       if (savedState) {
         const parsedState = JSON.parse(savedState);
         
+        // Migration logic for old state versions
         if (parsedState.expenses && Array.isArray(parsedState.expenses)) {
             parsedState.expenses.forEach((exp: ExpenseItem) => {
                 if ((exp.category as any) === 'Discretionary') {
@@ -294,17 +279,7 @@ const App: React.FC = () => {
 
         const mergedState = { ...initialAppState, ...parsedState };
         mergedState.loan = { ...initialAppState.loan, ...(parsedState.loan || {}) };
-        mergedState.investmentProperties = mergedState.investmentProperties || [];
-        mergedState.otherDebts = mergedState.otherDebts || [];
-        mergedState.futureChanges = mergedState.futureChanges || [];
-        mergedState.futureLumpSums = mergedState.futureLumpSums || [];
-        mergedState.incomes = mergedState.incomes || [];
-        mergedState.expenses = mergedState.expenses || [];
         
-        if (typeof parsedState.allPartiesInAttendance === 'boolean') {
-             mergedState.allPartiesInAttendance = parsedState.allPartiesInAttendance ? 'Yes- Couple' : 'Only 1 of 2 Showed';
-        }
-
         return sanitizeAppState(mergedState);
       }
     } catch (error) {
@@ -328,7 +303,6 @@ const App: React.FC = () => {
             setSavedScenarios(JSON.parse(scenariosJSON));
         }
     } catch (error) {
-        console.error("Failed to load scenarios from localStorage", error);
         setSavedScenarios([]);
     }
   }, []);
@@ -354,14 +328,13 @@ const App: React.FC = () => {
     setZapierStatus('loading');
 
     try {
-      // 1. Create a serializable version of the calculations data by removing functions.
       const getSerializableCalculations = (calcs: any) => {
         const {
           getMonthlyAmount,
           getAnnualAmount,
           calculatePIPayment,
           calculateIOPayment,
-          wealthCalcs, // This function is spread into the top level of the calculations object
+          wealthCalcs, 
           ...serializableData
         } = calcs;
         return serializableData;
@@ -372,36 +345,13 @@ const App: React.FC = () => {
         calculations: getSerializableCalculations(calculations),
       };
 
-      // 2. Create raw text data from the HTML summary note.
-      const htmlToText = (html: string): string => {
-        let text = html;
-        // Replace block-level tags with newlines before stripping all tags
-        text = text.replace(/<\/h[1-6]>/gi, '\n\n');
-        text = text.replace(/<p>/gi, '\n');
-        text = text.replace(/<br\s*\/?>/gi, '\n');
-        text = text.replace(/<\/tr>/gi, '\n');
-        text = text.replace(/<\/td>/gi, '\t');
-        // Strip all remaining HTML tags
-        text = text.replace(/<[^>]+>/g, '');
-        // Decode common HTML entities
-        text = text.replace(/&nbsp;/g, ' ');
-        // Clean up excessive whitespace
-        text = text.replace(/(\n\s*){3,}/g, '\n\n'); // Collapse more than 2 newlines
-        text = text.replace(/[ \t]{2,}/g, ' '); // Collapse multiple spaces/tabs into one space
-        return text.trim();
-      };
-
-      const rawTextData = htmlToText(generateHubspotNote());
-
-      // 3. Construct the final payload for Zapier.
+      // Payload for Zapier
       const payload = {
         client_email: appState.clientEmail,
         client_phone: appState.clientPhone,
         jsonData: jsonData,
-        rawTextData: rawTextData,
       };
 
-      // 4. Send the data to the Zapier webhook.
       await fetch(ZAPIER_WEBHOOK_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -439,7 +389,7 @@ const App: React.FC = () => {
 
   const tabs: { id: Tab; label: string; component: React.ReactNode }[] = [
     { id: Tab.CurrentLoan, label: 'Current Loan', component: <Tab1_CurrentLoan appState={appState} setAppState={setAppState} calculations={calculations} setWarningToast={setWarningToast} /> },
-    { id: Tab.InterestBreakdown, label: 'Int Breakdown', component: <Tab2_InterestBreakdown appState={appState} setAppState={setAppState} calculations={calculations} /> },
+    { id: Tab.InterestBreakdown, label: 'Int Breakdown', component: <Tab2_InterestBreakdown appState={appState} setAppState={setAppState} calculations={calculations} setWarningToast={setWarningToast} /> },
     { id: Tab.InvestmentProperties, label: 'Investments', component: <Tab_InvestmentProperties appState={appState} setAppState={setAppState} calculations={calculations} setWarningToast={setWarningToast} /> },
     { id: Tab.IncomeExpenses, label: 'Income & Expenses', component: <Tab3_IncomeExpenses appState={appState} setAppState={setAppState} calculations={calculations} /> },
     { id: Tab.OODC, label: 'OODC', component: <Tab4_OODC appState={appState} setAppState={setAppState} calculations={calculations} /> },
@@ -449,187 +399,6 @@ const App: React.FC = () => {
     { id: Tab.Reports, label: 'Reports', component: <Tab_Reports appState={appState} setAppState={setAppState} calculations={calculations} /> },
     { id: Tab.Summary, label: 'Summary', component: <Tab5_Summary appState={appState} setAppState={setAppState} calculations={calculations} onUploadRecord={handleOpenZapierUploadModal} zapierStatus={zapierStatus} /> },
   ];
-  
-  const generateHubspotNote = (): string => {
-    const { loan, people, clientEmail, clientPhone, investmentProperties, idealRetirementAge, investmentAmountPercentage, investmentGrowthRate, incomes, expenses, futureChanges, futureLumpSums } = appState;
-    const { bankLoanCalculation, crownMoneyLoanCalculation, wealthProjection, totalMonthlyIncome, totalMonthlyExpenses, investmentLoanCalculations, retirementWealthProjection, getMonthlyAmount, investmentPropertiesNetCashflow } = calculations;
-
-    const formatCurrency = (value: number, digits = 0) => {
-        if (isNaN(value) || !isFinite(value)) return 'N/A';
-        return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
-    };
-    const formatYears = (value: number) => {
-        if (isNaN(value) || !isFinite(value)) return 'N/A';
-        return `${value.toFixed(1)} Years`;
-    };
-
-    const isBankLoanValid = bankLoanCalculation.termInYears !== Infinity;
-    const isCrownLoanValid = crownMoneyLoanCalculation.termInYears !== Infinity;
-
-    const primaryInterestSaved = isBankLoanValid && isCrownLoanValid ? bankLoanCalculation.totalInterest - crownMoneyLoanCalculation.totalInterest : 0;
-    const netLoanAmount = loan.amount - (loan.offsetBalance || 0);
-    const hasInvestments = investmentProperties.length > 0;
-    const isAnyInvestmentUnpayable = investmentLoanCalculations.investmentPayoffSchedule.some((p: any) => p.bank.termInYears === Infinity || p.crown.termInYears === Infinity);
-    const canCalculateInvestmentSavings = hasInvestments && isCrownLoanValid && !isAnyInvestmentUnpayable;
-    const investmentInterestSaved = canCalculateInvestmentSavings ? investmentLoanCalculations.totalBankInterest - investmentLoanCalculations.totalCrownInterest : 0;
-    const totalCrownPayoffYears = canCalculateInvestmentSavings ? crownMoneyLoanCalculation.termInYears + investmentLoanCalculations.totalCrownTerm : crownMoneyLoanCalculation.termInYears;
-    const totalInterestSaved = primaryInterestSaved + investmentInterestSaved;
-    const monthlySavings = getMonthlyAmount(appState.loan.repayment, appState.loan.frequency);
-    const totalNetPositionAtRetirement = retirementWealthProjection.wealth + retirementWealthProjection.cashInHand + (retirementWealthProjection.homeEquity || 0);
-
-    let html = `<h1>Crown Money "Out of Debt" Calculator Summary</h1>`;
-
-    if (isCrownLoanValid) {
-        html += `
-            <div>
-                <p>Total Interest Saved (Home & Investments)</p>
-                <p>${formatCurrency(totalInterestSaved)}</p>
-                <p>Completely Debt Free In</p>
-                <p>${formatYears(totalCrownPayoffYears)}</p>
-            </div>
-        `;
-    }
-
-    html += `
-        <h2>Client & Loan Overview</h2>
-        <table>
-            <tr><th>Borrowers</th><td>${people.map(p => `${p.name} (Age ${p.age})`).join(', ')}</td></tr>
-            <tr><th>Email</th><td>${clientEmail || 'N/A'}</td></tr>
-            <tr><th>Phone</th><td>${clientPhone || 'N/A'}</td></tr>
-            <tr><th>Number of Kids</th><td>${appState.numberOfKids}</td></tr>
-            <tr><th>Attendance</th><td>${appState.allPartiesInAttendance}</td></tr>
-            <tr><td colspan="2"><strong>Current Loan</strong></td></tr>
-            <tr><th>Property Value</th><td>${formatCurrency(loan.propertyValue)}</td></tr>
-            <tr><th>Loan Amount</th><td>${formatCurrency(loan.amount)}</td></tr>
-            <tr><th>Offset Balance</th><td>${formatCurrency(loan.offsetBalance || 0)}</td></tr>
-            <tr><th>Net Loan Amount</th><td><strong>${formatCurrency(netLoanAmount)}</strong></td></tr>
-            <tr><th>Interest Rate</th><td>${loan.interestRate.toFixed(2)}%</td></tr>
-            <tr><th>Repayment</th><td>${formatCurrency(loan.repayment)} / ${loan.frequency}</td></tr>
-        </table>
-    `;
-
-    html += `
-        <h2>Budget Summary</h2>
-        <table>
-            <tr><th>Total Monthly Income</th><td style="color: green;">${formatCurrency(totalMonthlyIncome)}</td></tr>
-            <tr><th>Total Monthly Expenses</th><td style="color: red;">${formatCurrency(totalMonthlyExpenses)}</td></tr>
-            <tr><th>Monthly Surplus</th><td><strong>${formatCurrency(totalMonthlyIncome - totalMonthlyExpenses)}</strong></td></tr>
-        </table>
-    `;
-    
-    html += `
-        <h2>Detailed Budget</h2>
-        <h3>Incomes</h3>
-        <table>
-            <thead><tr><th>Source</th><th>Amount</th><th>Frequency</th></tr></thead>
-            <tbody>
-                ${incomes.map(i => `<tr><td>${i.name}</td><td>${formatCurrency(i.amount)}</td><td style="text-transform: capitalize;">${i.frequency}</td></tr>`).join('')}
-            </tbody>
-        </table>
-        <h3>Expenses</h3>
-        <table>
-            <thead><tr><th>Item</th><th>Category</th><th>Amount</th><th>Frequency</th></tr></thead>
-            <tbody>
-                ${expenses.map(e => `<tr><td>${e.name}</td><td>${e.category}</td><td>${formatCurrency(e.amount)}</td><td style="text-transform: capitalize;">${e.frequency}</td></tr>`).join('')}
-            </tbody>
-        </table>
-    `;
-
-    html += `
-        <h2>Scenario Comparison: Primary Home Loan</h2>
-        <table>
-            <thead><tr><th>Metric</th><th>Bank</th><th>Crown Money</th></tr></thead>
-            <tbody>
-                <tr><td>Payoff Time</td><td>${formatYears(bankLoanCalculation.termInYears)}</td><td style="color: #007A8C; font-weight: bold;">${formatYears(crownMoneyLoanCalculation.termInYears)}</td></tr>
-                <tr><td>Total Interest Paid</td><td>${formatCurrency(bankLoanCalculation.totalInterest)}</td><td style="color: #007A8C; font-weight: bold;">${formatCurrency(crownMoneyLoanCalculation.totalInterest)}</td></tr>
-                ${people.map(p => `<tr><td>${p.name} Debt Free Age</td><td>${isBankLoanValid ? Math.ceil(p.age + bankLoanCalculation.termInYears) : 'N/A'}</td><td style="color: #007A8C; font-weight: bold;">${isCrownLoanValid ? Math.ceil(p.age + crownMoneyLoanCalculation.termInYears) : 'N/A'}</td></tr>`).join('')}
-            </tbody>
-        </table>
-    `;
-
-    if (futureChanges.length > 0 || futureLumpSums.length > 0) {
-        html += `<h2>Future Financial Events</h2>`;
-        if (futureChanges.length > 0) {
-            html += `
-                <h3>Scheduled Changes</h3>
-                <table>
-                    <thead><tr><th>Description</th><th>Type</th><th>Change</th><th>Timeline</th></tr></thead>
-                    <tbody>
-                        ${futureChanges.map(c => `<tr><td>${c.description}</td><td style="text-transform: capitalize;">${c.type}</td><td>${c.changeAmount > 0 ? '+' : ''}${formatCurrency(c.changeAmount)} / ${c.frequency}</td><td>${c.startDate} to ${c.isPermanent ? 'Permanent' : c.endDate}</td></tr>`).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
-        if (futureLumpSums.length > 0) {
-            html += `
-                <h3>Lump Sum Events</h3>
-                <table>
-                    <thead><tr><th>Description</th><th>Type</th><th>Amount</th><th>Date</th></tr></thead>
-                    <tbody>
-                        ${futureLumpSums.map(l => `<tr><td>${l.description}</td><td style="text-transform: capitalize;">${l.type}</td><td>${formatCurrency(l.amount)}</td><td>${l.date}</td></tr>`).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
-    }
-    
-    if (hasInvestments) {
-        html += `<h2>Investment Portfolio Summary</h2>`;
-        investmentProperties.forEach(prop => {
-            const monthlyRental = getMonthlyAmount(prop.rentalIncome, prop.rentalIncomeFrequency);
-            const monthlyRepayment = getMonthlyAmount(prop.repayment, prop.repaymentFrequency);
-            const monthlyExpenses = prop.expenses.reduce((sum, exp) => sum + getMonthlyAmount(exp.amount, exp.frequency), 0);
-            const netCashflow = monthlyRental - monthlyRepayment - monthlyExpenses;
-
-            html += `
-                <h3>${prop.address}</h3>
-                <table>
-                    <tr><th>Property Value</th><td>${formatCurrency(prop.propertyValue)}</td></tr>
-                    <tr><th>Loan Amount</th><td>${formatCurrency(prop.loanAmount)}</td></tr>
-                    <tr><th>Rental Income</th><td>${formatCurrency(prop.rentalIncome)} / ${prop.rentalIncomeFrequency}</td></tr>
-                    <tr><th>Net Monthly Cashflow</th><td style="color: ${netCashflow >= 0 ? 'green' : 'red'};">${formatCurrency(netCashflow)}</td></tr>
-                </table>
-            `;
-        });
-        
-        html += `
-            <div style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #ccc;">
-                <table>
-                    <tr><th>Total Portfolio Value</th><td>${formatCurrency(investmentProperties.reduce((s, p) => s + p.propertyValue, 0))}</td></tr>
-                    <tr><th>Total Net Investment Debt</th><td>${formatCurrency(investmentLoanCalculations.totalInvestmentDebt - investmentProperties.reduce((s, p) => s + (p.offsetBalance || 0), 0))}</td></tr>
-                    <tr><th>Total Net Monthly Cashflow</th><td style="color: ${investmentPropertiesNetCashflow >= 0 ? 'green' : 'red'}; font-weight: bold;">${formatCurrency(investmentPropertiesNetCashflow)}</td></tr>
-                </table>
-            </div>
-        `;
-
-        if (canCalculateInvestmentSavings) {
-             html += `
-                <h3>Investment Payoff Comparison</h3>
-                <table>
-                    <thead><tr><th>Metric</th><th>Bank</th><th>Crown Money</th></tr></thead>
-                    <tbody>
-                        <tr><td>Payoff Time</td><td>${formatYears(investmentLoanCalculations.totalBankTerm)}</td><td style="color: #007A8C; font-weight: bold;">${formatYears(investmentLoanCalculations.totalCrownTerm)}</td></tr>
-                        <tr><td>Total Interest Paid</td><td>${formatCurrency(investmentLoanCalculations.totalBankInterest)}</td><td style="color: #007A8C; font-weight: bold;">${formatCurrency(investmentLoanCalculations.totalCrownInterest)}</td></tr>
-                    </tbody>
-                </table>
-            `;
-        }
-    }
-    
-    if (isCrownLoanValid) {
-        html += `
-            <h2>Wealth Projection Summary</h2>
-            <table>
-                <tr><th>Investment Strategy</th><td>Investing ${investmentAmountPercentage}% of ${formatCurrency(monthlySavings)}/m</td></tr>
-                <tr><th>Assumed Annual Growth</th><td>${investmentGrowthRate}%</td></tr>
-                <tr><th>Retirement Age</th><td>${idealRetirementAge}</td></tr>
-                <tr><th>Projected Net Position</th><td><strong>${formatCurrency(totalNetPositionAtRetirement)}</strong></td></tr>
-            </table>
-        `;
-    }
-
-    return html;
-  }
   
   const handleResetApp = () => {
     try {
@@ -656,7 +425,7 @@ const App: React.FC = () => {
   };
   
   const handleOpenSaveModal = () => {
-    const date = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const date = new Date().toLocaleDateString('en-CA'); 
     const suggestedName = appState.clientEmail 
         ? `${appState.clientEmail.split('@')[0]} - ${date}` 
         : `New Scenario - ${date}`;
@@ -742,7 +511,7 @@ const App: React.FC = () => {
                       id: Date.now(),
                       name: scenarioName,
                       timestamp: Date.now(),
-                      data: { ...initialAppState, ...importedData }, // Merge with defaults to ensure compatibility
+                      data: { ...initialAppState, ...importedData }, 
                   };
                   updateSavedScenarios([...savedScenarios, newScenario]);
                   setInfoToast(`Scenario "${scenarioName}" imported successfully!`);
@@ -760,7 +529,6 @@ const App: React.FC = () => {
   };
 
   const primaryClientEmail = appState.clientEmail;
-
   const buttonBaseClasses = "p-2 bg-[var(--card-bg-color)] hover:bg-[var(--input-bg-color)] rounded-md flex items-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-color)] focus:ring-[var(--title-color)]";
   
   const APP_PASSWORD = 'Crown';
@@ -771,7 +539,6 @@ const App: React.FC = () => {
       setIsAuthenticated(true);
     } catch (error) {
       console.error("Could not write to session storage:", error);
-      // Fallback for private browsing mode, just authenticate for the current view
       setIsAuthenticated(true);
     }
   };
@@ -779,7 +546,6 @@ const App: React.FC = () => {
   if (!isAuthenticated) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} correctPassword={APP_PASSWORD} />;
   }
-
 
   return (
     <div className="min-h-screen text-[var(--text-color)] font-sans p-4 sm:p-8 print:p-4 print:bg-white print:text-black">
@@ -819,7 +585,6 @@ const App: React.FC = () => {
         </div>
       )}
       <Toast status={zapierStatus} messages={zapierMessages} className="top-20" />
-
 
       <div className="hidden print:block">
           <header className="flex items-center justify-between mb-8 pb-4 border-b border-gray-400">
@@ -866,9 +631,6 @@ const App: React.FC = () => {
                     <TrashIcon className="h-5 w-5"/>
                     <span className="text-sm font-semibold hidden sm:inline">Reset</span>
                 </button>
-               <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} title="Toggle Theme" className={buttonBaseClasses}>
-                  {theme === 'dark' ? <SunIcon className="h-5 w-5"/> : <MoonIcon className="h-5 w-5"/>}
-               </button>
           </div>
         </header>
 
@@ -1086,8 +848,6 @@ const App: React.FC = () => {
         content={appState.notepadContent}
         setContent={(newContent) => setAppState(prev => ({...prev, notepadContent: newContent}))}
       />
-      
-      <Assistant appState={appState} calculations={calculations} activeTab={tabs.find(t => t.id === activeTab)?.label || 'Current Loan'} />
     </div>
   );
 };

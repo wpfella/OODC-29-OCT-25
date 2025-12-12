@@ -1,3 +1,4 @@
+
 export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually';
 export type LoanFrequency = 'weekly' | 'fortnightly' | 'monthly';
 
@@ -86,6 +87,12 @@ export interface InvestmentProperty {
   purchaseDate?: string;
   rentalGrowthRate?: number;
   interestOnlyTerm?: number; // in years
+  crownSettings?: {
+      loanType: 'P&I' | 'IO';
+      repayment: number;
+      interestOnlyTerm: number;
+      interestRate?: number;
+  };
 }
 
 export interface AppState {

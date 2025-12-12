@@ -55,7 +55,7 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
   const { 
     bankLoanCalculation, crownMoneyLoanCalculation, wealthProjection, 
     totalMonthlyIncome, totalMonthlyExpenses, investmentLoanCalculations,
-    retirementWealthProjection, getMonthlyAmount
+    retirementWealthProjection, getMonthlyAmount, bankSurplus
   } = calculations;
   
   const handleStateChange = (field: keyof AppState, value: any) => {
@@ -68,7 +68,7 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
   };
   const formatYears = (value: number) => {
     if (isNaN(value) || !isFinite(value)) return 'N/A';
-    return `${value.toFixed(2)} Years`;
+    return `${value.toFixed(1)} Years`;
   };
   
   const isBankLoanValid = bankLoanCalculation.termInYears !== Infinity;
@@ -217,7 +217,7 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                 <SummaryItem label="Total Monthly Expenses" value={formatCurrency(totalMonthlyExpenses)} valueClassName="text-[var(--color-negative-text)] print:text-red-700" />
                 <div className="flex justify-between py-3 mt-2 rounded-lg px-3 print:bg-blue-100" style={{ backgroundColor: 'var(--color-surplus-bg)'}}>
                 <span className="font-bold text-sm print:text-blue-800" style={{ color: 'var(--color-surplus-text)' }}>Monthly Surplus</span>
-                <span className="font-bold text-sm print:text-blue-800" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(totalMonthlyIncome - totalMonthlyExpenses)}</span>
+                <span className="font-bold text-sm print:text-blue-800" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(bankSurplus)}</span>
                 </div>
             </Card>
             
@@ -261,14 +261,14 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                               <h4 className="font-semibold text-base mb-2 text-[var(--text-color)] print:text-black">{prop.address}</h4>
                               <SummaryItem label="Property Value" value={formatCurrency(prop.propertyValue)} />
                               <SummaryItem label="Loan Amount" value={formatCurrency(prop.loanAmount)} />
-                              <SummaryItem label="Net Monthly Cashflow" value={formatCurrency(propCashflow)} valueClassName={propCashflow >= 0 ? 'text-[var(--color-positive-text)] print:text-green-700' : 'text-[var(--color-negative-text)] print:text-red-700'} />
+                              <SummaryItem label="Net Monthly Cashflow (Current)" value={formatCurrency(propCashflow)} valueClassName={propCashflow >= 0 ? 'text-[var(--color-positive-text)] print:text-green-700' : 'text-[var(--color-negative-text)] print:text-red-700'} />
                           </div>
                       );
                   })}
                    <div className="mt-4 pt-4 border-t border-[var(--border-color)] print:border-gray-300">
                         <SummaryItem label="Total Portfolio Value" value={formatCurrency(totalPropertyValue)} valueClassName="font-bold"/>
                         <SummaryItem label="Total Net Investment Debt" value={formatCurrency(totalNetInvestmentDebt)} valueClassName="font-bold" />
-                        <SummaryItem label="Total Net Monthly Cashflow" value={formatCurrency(calculations.investmentPropertiesNetCashflow)} valueClassName={`font-bold ${calculations.investmentPropertiesNetCashflow >= 0 ? 'text-[var(--color-positive-text)] print:text-green-700' : 'text-[var(--color-negative-text)] print:text-red-700'}`} />
+                        <SummaryItem label="Total Net Monthly Cashflow (Current)" value={formatCurrency(calculations.investmentPropertiesNetCashflow)} valueClassName={`font-bold ${calculations.investmentPropertiesNetCashflow >= 0 ? 'text-[var(--color-positive-text)] print:text-green-700' : 'text-[var(--color-negative-text)] print:text-red-700'}`} />
                    </div>
               </Card>
             )}
@@ -296,8 +296,8 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                           <p className="text-3xl font-bold my-1 text-[var(--chart-color-crown)] print:text-green-700">{formatYears(totalCrownPayoffYears)}</p>
                       </div>
                       <div className="mt-2 text-sm">
-                          <SummaryItem label="Primary Home Payoff" value={`${crownMoneyLoanCalculation.termInYears.toFixed(2)} Years`} />
-                          {hasInvestments && canCalculateInvestmentSavings && <SummaryItem label="All Investments Payoff" value={`${investmentLoanCalculations.totalCrownTerm.toFixed(2)} Years`} />}
+                          <SummaryItem label="Primary Home Payoff" value={`${crownMoneyLoanCalculation.termInYears.toFixed(1)} Years`} />
+                          {hasInvestments && canCalculateInvestmentSavings && <SummaryItem label="All Investments Payoff" value={`${investmentLoanCalculations.totalCrownTerm.toFixed(1)} Years`} />}
                       </div>
                   </div>
               </div>

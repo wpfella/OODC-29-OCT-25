@@ -25,7 +25,7 @@ const FutureChangeImpactDisplay: React.FC<{
     const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
     const formatYears = (value: number) => {
         if (!isFinite(value) || isNaN(value)) return 'N/A';
-        return `${value.toFixed(2)} years`;
+        return `${value.toFixed(1)} years`;
     };
 
     const impact = useMemo(() => {
@@ -34,7 +34,7 @@ const FutureChangeImpactDisplay: React.FC<{
         }
 
         const { loan, futureChanges, futureLumpSums, crownMoneyInterestRate, otherDebts } = appState;
-        const { surplus } = calculations;
+        const { crownSurplus } = calculations; // Uses Crown Surplus
 
         // The "impacted" calculation is the main one from the app, which includes everything.
         const crownImpactedCalc = calculations.crownMoneyLoanCalculation;
@@ -46,7 +46,7 @@ const FutureChangeImpactDisplay: React.FC<{
         const crownLoanForCalc = {
             amount: (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0),
             interestRate: crownMoneyInterestRate,
-            repayment: surplus,
+            repayment: crownSurplus,
             frequency: 'monthly' as const,
             offsetBalance: 0,
         };
@@ -386,7 +386,7 @@ const LumpSumImpactDisplay: React.FC<{
     const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
     const formatYears = (value: number) => {
         if (!isFinite(value) || isNaN(value)) return 'N/A';
-        return `${value.toFixed(2)} years`;
+        return `${value.toFixed(1)} years`;
     };
 
     const impact = useMemo(() => {
@@ -395,7 +395,7 @@ const LumpSumImpactDisplay: React.FC<{
         }
 
         const { loan, futureChanges, futureLumpSums, crownMoneyInterestRate, otherDebts } = appState;
-        const { surplus } = calculations;
+        const { crownSurplus } = calculations; // Use Crown Surplus
 
         // The "impacted" calculation is the main one from the app, which includes everything.
         const crownImpactedCalc = calculations.crownMoneyLoanCalculation;
@@ -407,7 +407,7 @@ const LumpSumImpactDisplay: React.FC<{
         const crownLoanForCalc = {
             amount: (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0),
             interestRate: crownMoneyInterestRate,
-            repayment: surplus,
+            repayment: crownSurplus,
             frequency: 'monthly' as const,
             offsetBalance: 0,
         };
@@ -609,7 +609,8 @@ interface Props {
 
 const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculations }) => {
   const { incomes, expenses, futureChanges, futureLumpSums, loan, otherDebts } = appState;
-  const { totalMonthlyIncome, totalMonthlyExpenses, investmentPropertiesNetCashflow, getMonthlyAmount, surplus } = calculations;
+  // Use bankSurplus (Current Situation) as the primary surplus display on this tab
+  const { totalMonthlyIncome, totalMonthlyExpenses, investmentPropertiesNetCashflow, getMonthlyAmount, bankSurplus } = calculations;
 
   const handleListChange = <T,>(list: T[], setList: (list: T[]) => void, index: number, field: keyof T, value: any) => {
     const newList = [...list];
@@ -636,7 +637,7 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
   const formatCurrency = (value: number, digits = 0) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
 
   const monthlyLoanRepayment = getMonthlyAmount(loan.repayment, loan.frequency);
-  const surplusForDebtReduction = surplus;
+  const surplusForDebtReduction = bankSurplus; // Display current surplus
   const netMonthlyCashflow = surplusForDebtReduction - monthlyLoanRepayment;
 
   const inputClasses = "bg-[var(--input-bg-color)] p-2 rounded border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
@@ -785,7 +786,7 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                     <div className={`flex justify-between items-center p-2 rounded-lg text-xs ${investmentPropertiesNetCashflow > 0 ? 'print:bg-green-100' : 'print:bg-red-100'}`} style={{ backgroundColor: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
                     <div className="flex items-center gap-2">
                         <span className={`font-medium ${investmentPropertiesNetCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Investment Cashflow</span>
-                        <Tooltip text="The combined monthly cashflow (income minus all expenses) from your investment properties, based on today's values. This is automatically factored into your total income/expenses.">
+                        <Tooltip text="The combined monthly cashflow (income minus all expenses) from your investment properties, based on your Current/Bank settings. This is automatically factored into your total income/expenses below.">
                             <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)] print:hidden"/>
                         </Tooltip>
                     </div>
@@ -799,33 +800,62 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                             if (categoryExpenses.length === 0) return null;
 
                             const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + getMonthlyAmount(exp.amount, exp.frequency), 0);
+                            const categoryPercentage = totalMonthlyIncome > 0 ? (categoryTotal / totalMonthlyIncome) * 100 : 0;
 
                             return (
                                 <div key={category} className="pl-2 pb-2">
                                     <h5 className="font-semibold text-[var(--text-color)] text-left mb-1 capitalize">{category.replace(' Expenses', '')}</h5>
-                                    {categoryExpenses.map(exp => (
-                                        <div key={exp.id} className="flex justify-between gap-4 italic">
-                                            <span>{exp.name} ({formatCurrency(exp.amount,0)}/{exp.frequency.charAt(0)})</span>
-                                            <span>{formatCurrency(getMonthlyAmount(exp.amount, exp.frequency), 2)}</span>
-                                        </div>
-                                    ))}
-                                    <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-1 mt-1 border-t border-dashed border-[var(--border-color)]">
+                                    {categoryExpenses.map(exp => {
+                                        const monthlyAmount = getMonthlyAmount(exp.amount, exp.frequency);
+                                        const percentage = totalMonthlyIncome > 0 ? (monthlyAmount / totalMonthlyIncome) * 100 : 0;
+                                        return (
+                                            <div key={exp.id} className="flex justify-between gap-4 italic items-center">
+                                                <span>{exp.name} ({formatCurrency(exp.amount,0)}/{exp.frequency.charAt(0)})</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
+                                                        {percentage.toFixed(1)}%
+                                                    </span>
+                                                    <span>{formatCurrency(monthlyAmount, 2)}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-1 mt-1 border-t border-dashed border-[var(--border-color)] items-center">
                                         <span>Subtotal</span>
-                                        <span>{formatCurrency(categoryTotal, 2)}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
+                                                {categoryPercentage.toFixed(1)}%
+                                            </span>
+                                            <span>{formatCurrency(categoryTotal, 2)}</span>
+                                        </div>
                                     </div>
                                 </div>
                             );
                         })}
-                        {investmentPropertiesNetCashflow < 0 && 
-                            <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-2 border-t border-dashed border-[var(--border-color)] pl-2">
-                                <span>Investment Shortfall</span>
-                                <span>{formatCurrency(Math.abs(investmentPropertiesNetCashflow), 2)}</span>
-                            </div>
-                        }
+                        {investmentPropertiesNetCashflow < 0 && (() => {
+                            const shortfall = Math.abs(investmentPropertiesNetCashflow);
+                            const percentage = totalMonthlyIncome > 0 ? (shortfall / totalMonthlyIncome) * 100 : 0;
+                            return (
+                                <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-2 border-t border-dashed border-[var(--border-color)] pl-2 items-center">
+                                    <span>Investment Shortfall</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
+                                            {percentage.toFixed(1)}%
+                                        </span>
+                                        <span>{formatCurrency(shortfall, 2)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                     <div className="flex justify-between items-center p-2 rounded-lg mt-2" style={{ backgroundColor: 'var(--color-negative-bg)' }}>
                         <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Total Monthly Expenses</span>
-                        <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(totalMonthlyExpenses)}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium opacity-80 bg-white/50 px-1.5 py-0.5 rounded-full" style={{ color: 'var(--color-negative-text)' }}>
+                                {totalMonthlyIncome > 0 ? ((totalMonthlyExpenses / totalMonthlyIncome) * 100).toFixed(1) : '0.0'}%
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(totalMonthlyExpenses)}</span>
+                        </div>
                     </div>
                 </div>
                 

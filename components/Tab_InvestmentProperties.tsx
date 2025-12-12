@@ -36,6 +36,7 @@ const InvestmentPropertyCard: React.FC<{
     const [isStartDateFocused, setIsStartDateFocused] = React.useState(false);
     const [isPurchaseDateFocused, setIsPurchaseDateFocused] = React.useState(false);
     const [repaymentInput, setRepaymentInput] = useState(String(property.repayment));
+    const [crownRepaymentInput, setCrownRepaymentInput] = useState(String(property.crownSettings?.repayment ?? property.repayment));
 
     const debouncedProperty = useDebounce(property, 500);
 
@@ -73,6 +74,7 @@ const InvestmentPropertyCard: React.FC<{
         return Math.max(0.1, property.loanTerm - yearsElapsed);
     };
     
+    // --- Bank Calculators ---
     const handleCalculatePI = () => {
         const remainingTerm = getRemainingTerm();
         const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
@@ -89,6 +91,60 @@ const InvestmentPropertyCard: React.FC<{
         onUpdate(property.id, 'loanType', 'IO');
     };
 
+    // --- Crown Calculators ---
+    const updateCrownSettings = (field: keyof NonNullable<InvestmentProperty['crownSettings']>, value: any) => {
+        const currentSettings = property.crownSettings || {
+            loanType: property.loanType,
+            repayment: property.repayment,
+            interestOnlyTerm: property.interestOnlyTerm || 0,
+            interestRate: property.interestRate
+        };
+        onUpdate(property.id, 'crownSettings', { ...currentSettings, [field]: value });
+    };
+
+    const handleCalculateCrownPI = () => {
+        const remainingTerm = getRemainingTerm();
+        const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
+        const crownRate = property.crownSettings?.interestRate ?? property.interestRate;
+        const newRepayment = calculatePIPayment(netLoanAmount, crownRate, remainingTerm, property.repaymentFrequency);
+        
+        // Batch update to ensure consistent state
+        const currentSettings = property.crownSettings || {
+            interestRate: property.interestRate,
+            interestOnlyTerm: 0,
+            loanType: 'P&I',
+            repayment: 0
+        };
+        
+        onUpdate(property.id, 'crownSettings', {
+            ...currentSettings,
+            repayment: Math.round(newRepayment),
+            loanType: 'P&I',
+            interestOnlyTerm: 0
+        });
+        setCrownRepaymentInput(String(Math.round(newRepayment)));
+    };
+
+    const handleCalculateCrownIO = () => {
+        const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
+        const crownRate = property.crownSettings?.interestRate ?? property.interestRate;
+        const newRepayment = calculateIOPayment(netLoanAmount, crownRate, property.repaymentFrequency);
+        
+        const currentSettings = property.crownSettings || {
+            interestRate: property.interestRate,
+            interestOnlyTerm: property.interestOnlyTerm || 5,
+            loanType: 'IO',
+            repayment: 0
+        };
+
+        onUpdate(property.id, 'crownSettings', {
+            ...currentSettings,
+            repayment: Math.round(newRepayment),
+            loanType: 'IO'
+        });
+        setCrownRepaymentInput(String(Math.round(newRepayment)));
+    };
+
     const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
 
     const monthlyRental = getMonthlyFromAnyFrequency(property.rentalIncome, property.rentalIncomeFrequency);
@@ -98,57 +154,50 @@ const InvestmentPropertyCard: React.FC<{
 
     const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
+    // Sync inputs
     useEffect(() => {
         setRepaymentInput(String(property.repayment));
     }, [property.repayment]);
 
+    useEffect(() => {
+        setCrownRepaymentInput(String(property.crownSettings?.repayment ?? property.repayment));
+    }, [property.crownSettings?.repayment, property.repayment]);
+
+    // Ensure crown settings exist
+    useEffect(() => {
+        if (!property.crownSettings) {
+            onUpdate(property.id, 'crownSettings', {
+                loanType: property.loanType,
+                repayment: property.repayment,
+                interestOnlyTerm: property.interestOnlyTerm || 0,
+                interestRate: property.interestRate,
+            });
+        }
+    }, []); // Run once on mount
+
     const handleRepaymentBlur = () => {
         const numericValue = parseFloat(repaymentInput);
-
         if (repaymentInput.trim() === '' || isNaN(numericValue)) {
             setRepaymentInput(String(property.repayment));
             return;
         }
+        onUpdate(property.id, 'repayment', numericValue);
+    };
 
-        const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
-        if (netLoanAmount <= 0) {
-            onUpdate(property.id, 'repayment', numericValue);
+    const handleCrownRepaymentBlur = () => {
+        const numericValue = parseFloat(crownRepaymentInput);
+        if (crownRepaymentInput.trim() === '' || isNaN(numericValue)) {
+            setCrownRepaymentInput(String(property.crownSettings?.repayment ?? property.repayment));
             return;
         }
-        
-        // Allow repayment to be as low as Interest Only, even if P&I is selected, to allow long terms.
-        const minRepayment = calculateIOPayment(netLoanAmount, property.interestRate, property.repaymentFrequency);
-
-        if (numericValue < minRepayment) {
-            const newRepayment = Math.ceil(minRepayment);
-            onUpdate(property.id, 'repayment', newRepayment);
-            setWarningToast(`Repayment for '${property.address}' was too low to cover interest. Adjusted to minimum of ${formatCurrency(newRepayment)}.`);
-        } else {
-            onUpdate(property.id, 'repayment', numericValue);
-        }
+        updateCrownSettings('repayment', numericValue);
     };
-    
-    useEffect(() => {
-        const { id, address, loanAmount, offsetBalance, interestRate, repayment, repaymentFrequency } = debouncedProperty;
-
-        const netLoanAmount = Math.max(0, loanAmount - (offsetBalance || 0));
-        if (netLoanAmount <= 0) return;
-
-        // Check against Interest Only to allow flexibility
-        const minRepayment = calculateIOPayment(netLoanAmount, interestRate, repaymentFrequency);
-        
-        if (repayment < minRepayment) {
-            const newRepayment = Math.ceil(minRepayment);
-            if (repayment !== newRepayment) { // Prevent unnecessary update to break loop
-                onUpdate(id, 'repayment', newRepayment);
-                setWarningToast(`Repayment for '${address}' was too low. Adjusted to minimum of ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(newRepayment)}.`);
-            }
-        }
-    }, [debouncedProperty.loanAmount, debouncedProperty.offsetBalance, debouncedProperty.interestRate, debouncedProperty.repaymentFrequency, onUpdate, setWarningToast]);
     
     const titleClasses = "text-lg font-bold text-[var(--title-color)]";
     const inputClasses = "w-full bg-[var(--input-bg-color)] p-2 rounded-md border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
     const selectClasses = `custom-select ${inputClasses}`;
+
+    const crownSettings = property.crownSettings || { loanType: property.loanType, repayment: property.repayment, interestOnlyTerm: property.interestOnlyTerm || 0, interestRate: property.interestRate };
 
     return (
         <Card className="mb-6">
@@ -176,9 +225,25 @@ const InvestmentPropertyCard: React.FC<{
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                {/* Left Column: Property & Loan */}
-                <div className="space-y-6">
+            {/* Common Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 p-4 bg-black/5 dark:bg-white/5 rounded-lg">
+                 <div>
+                    <SliderInput label="Property Value" value={property.propertyValue} onChange={val => onUpdate(property.id, 'propertyValue', val)} min={100000} max={3000000} step={10000} unit="$" />
+                 </div>
+                 <div>
+                    <SliderInput label="Loan Amount" value={property.loanAmount} onChange={val => onUpdate(property.id, 'loanAmount', val)} min={0} max={3000000} step={10000} unit="$" />
+                 </div>
+                 <div>
+                    <SliderInput label="Offset Balance" value={property.offsetBalance || 0} onChange={val => onUpdate(property.id, 'offsetBalance', val)} min={0} max={property.loanAmount} step={1000} unit="$" />
+                 </div>
+            </div>
+
+            {/* Split Loan Details */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
+                {/* Bank / Current Column */}
+                <div className="space-y-6 p-4 border border-[var(--border-color)] rounded-lg relative">
+                    <div className="absolute top-0 left-0 bg-[var(--card-bg-color)] px-2 -mt-3 ml-2 text-sm font-bold text-[var(--text-color-muted)]">Current / Bank Loan Details</div>
+                    
                     {property.isFuture && (
                         <div>
                             <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Target Purchase Date</label>
@@ -198,27 +263,48 @@ const InvestmentPropertyCard: React.FC<{
                             </div>
                         </div>
                     )}
-                    <SliderInput label="Property Value" value={property.propertyValue} onChange={val => onUpdate(property.id, 'propertyValue', val)} min={100000} max={3000000} step={10000} unit="$" />
-                    <SliderInput label="Loan Amount" value={property.loanAmount} onChange={val => onUpdate(property.id, 'loanAmount', val)} min={0} max={3000000} step={10000} unit="$" />
-                    <SliderInput label="Offset Account Balance" value={property.offsetBalance || 0} onChange={val => onUpdate(property.id, 'offsetBalance', val)} min={0} max={property.loanAmount} step={1000} unit="$" />
-                    <div className="text-right -mt-4 text-sm text-[var(--text-color-muted)] print:hidden">
-                        Net Loan Amount: <span className="font-bold text-[var(--text-color)]">{formatCurrency(netLoanAmount)}</span>
-                    </div>
-                    <SliderInput label="Interest Rate" value={property.interestRate} onChange={val => onUpdate(property.id, 'interestRate', val)} min={1} max={15} step={0.05} unit="%" />
-                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Loan Term</label>
-                        <div className="relative">
+
+                    <div>
+                        <div className='flex items-center gap-1 mb-1'>
+                            <label className="block text-sm font-medium text-[var(--text-color)]">Bank Interest Rate</label>
+                            <Tooltip text="The interest rate currently offered by your bank for this investment property.">
+                                <InfoIcon className="h-3 w-3 text-[var(--text-color-muted)]"/>
+                            </Tooltip>
+                        </div>
+                        <div className="flex items-center gap-2">
                             <input
-                                type="number"
-                                value={property.loanTerm}
-                                onChange={e => onUpdate(property.id, 'loanTerm', parseInt(e.target.value) || 0)}
-                                className={`${inputClasses} pr-16`}
+                                type="range"
+                                min="1"
+                                max="15"
+                                step="0.05"
+                                value={property.interestRate}
+                                onChange={(e) => onUpdate(property.id, 'interestRate', parseFloat(e.target.value))}
+                                className="w-full h-2 bg-[var(--slider-track-color)] rounded-lg appearance-none cursor-pointer"
+                                style={{ accentColor: 'var(--input-border-focus-color)' }}
                             />
-                            <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-color-muted)]">Years</span>
+                            <div className="w-24 relative">
+                                <input
+                                    type="number"
+                                    value={property.interestRate}
+                                    onChange={(e) => onUpdate(property.id, 'interestRate', parseFloat(e.target.value))}
+                                    className={`${inputClasses} text-right pr-6`}
+                                />
+                                <span className="absolute inset-y-0 right-2 flex items-center text-[var(--text-color-muted)] pointer-events-none">%</span>
+                            </div>
                         </div>
                     </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Loan Start / Refinance Date</label>
+                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Loan Term (Years)</label>
+                        <input
+                            type="number"
+                            value={property.loanTerm}
+                            onChange={e => onUpdate(property.id, 'loanTerm', parseInt(e.target.value) || 0)}
+                            className={inputClasses}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Loan Start Date</label>
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                 <CalendarIcon className="h-5 w-5 text-[var(--text-color-muted)]" />
@@ -234,8 +320,9 @@ const InvestmentPropertyCard: React.FC<{
                             />
                         </div>
                     </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Repayments</label>
+                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Current Repayments</label>
                         <div className="flex items-center gap-2">
                             <div className="relative flex-grow">
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
@@ -258,45 +345,119 @@ const InvestmentPropertyCard: React.FC<{
                          <div className="mt-2 flex gap-2">
                             <button
                                 onClick={handleCalculateIO}
-                                className={`w-full p-2 text-sm rounded-md font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--card-bg-color)] focus:ring-[var(--input-border-focus-color)] ${property.loanType === 'IO' ? 'bg-[var(--title-color)] text-white' : 'bg-[var(--input-bg-color)] hover:bg-opacity-80 border border-[var(--input-border-color)] text-[var(--title-color)]'}`}
-                                aria-pressed={property.loanType === 'IO'}
+                                className={`w-full p-2 text-xs rounded-md font-semibold transition-colors border ${property.loanType === 'IO' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-transparent text-gray-500 border-gray-300 hover:bg-gray-50'}`}
                             >
-                                Interest Only
+                                Set to Interest Only
                             </button>
                             <button
                                 onClick={handleCalculatePI}
-                                className={`w-full p-2 text-sm rounded-md font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--card-bg-color)] focus:ring-[var(--input-border-focus-color)] ${property.loanType === 'P&I' ? 'bg-[var(--title-color)] text-white' : 'bg-[var(--input-bg-color)] hover:bg-opacity-80 border border-[var(--input-border-color)] text-[var(--title-color)]'}`}
-                                aria-pressed={property.loanType === 'P&I'}
+                                className={`w-full p-2 text-xs rounded-md font-semibold transition-colors border ${property.loanType === 'P&I' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-transparent text-gray-500 border-gray-300 hover:bg-gray-50'}`}
                             >
-                                Principal & Interest
+                                Set to P & I
                             </button>
                         </div>
                     </div>
                      {property.loanType === 'IO' && (
                         <div>
-                            <label className="block text-sm font-medium text-[var(--text-color)] mb-1 flex items-center gap-1">
-                                Interest Only Term
-                                <Tooltip text="The number of years the loan will be interest-only before converting to P&I for the remaining term. Leave as 0 or equal to Loan Term if it is interest-only for the full duration.">
-                                    <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-                                </Tooltip>
-                            </label>
-                            <div className="relative">
-                                <input
-                                    type="number"
-                                    value={property.interestOnlyTerm || 0}
-                                    onChange={e => onUpdate(property.id, 'interestOnlyTerm', parseInt(e.target.value) || 0)}
-                                    className={`${inputClasses} pr-16`}
-                                    min={0}
-                                    max={property.loanTerm}
-                                />
-                                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-color-muted)]">Years</span>
-                            </div>
+                            <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Interest Only Term (Years)</label>
+                            <input
+                                type="number"
+                                value={property.interestOnlyTerm || 0}
+                                onChange={e => onUpdate(property.id, 'interestOnlyTerm', parseInt(e.target.value) || 0)}
+                                className={inputClasses}
+                                min={0}
+                                max={property.loanTerm}
+                            />
                         </div>
                     )}
                 </div>
 
-                {/* Right Column: Income & Expenses */}
-                <div className="space-y-6">
+                {/* Crown Strategy Column */}
+                <div className="space-y-6 p-4 border border-[var(--title-color)]/50 bg-[var(--title-color)]/5 rounded-lg relative">
+                    <div className="absolute top-0 left-0 bg-[var(--card-bg-color)] px-2 -mt-3 ml-2 text-sm font-bold text-[var(--title-color)] flex items-center gap-1">Crown Money Strategy 🏆</div>
+                    
+                    <div className="mt-2">
+                        <div className='flex items-center gap-1 mb-1'>
+                            <label className="block text-sm font-medium text-[var(--title-color)]">Crown Interest Rate</label>
+                            <Tooltip text="The interest rate you could achieve with the Crown Money strategy. Defaults to the Bank rate unless changed.">
+                                <InfoIcon className="h-3 w-3 text-[var(--title-color)]"/>
+                            </Tooltip>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="range"
+                                min="1"
+                                max="15"
+                                step="0.05"
+                                value={crownSettings.interestRate ?? property.interestRate}
+                                onChange={(e) => updateCrownSettings('interestRate', parseFloat(e.target.value))}
+                                className="w-full h-2 bg-[var(--slider-track-color)] rounded-lg appearance-none cursor-pointer"
+                                style={{ accentColor: 'var(--title-color)' }}
+                            />
+                            <div className="w-24 relative">
+                                <input
+                                    type="number"
+                                    value={crownSettings.interestRate ?? property.interestRate}
+                                    onChange={(e) => updateCrownSettings('interestRate', parseFloat(e.target.value))}
+                                    className={`${inputClasses} text-right pr-6 border-[var(--title-color)]/30 focus:border-[var(--title-color)]`}
+                                />
+                                <span className="absolute inset-y-0 right-2 flex items-center text-[var(--text-color-muted)] pointer-events-none">%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-2">
+                        <label className="block text-sm font-medium text-[var(--title-color)] mb-1">Target Repayments</label>
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex-grow">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
+                                <input 
+                                    type="text" 
+                                    value={crownRepaymentInput} 
+                                    onChange={e => setCrownRepaymentInput(e.target.value.replace(/[^0-9]/g, ''))}
+                                    onBlur={handleCrownRepaymentBlur}
+                                    className={`${inputClasses} pl-7 border-[var(--title-color)]/30 focus:border-[var(--title-color)]`} 
+                                />
+                            </div>
+                            <span className="text-sm font-medium text-[var(--text-color-muted)] capitalize self-center">{property.repaymentFrequency}</span>
+                        </div>
+                         <div className="mt-2 flex gap-2">
+                            <button
+                                onClick={handleCalculateCrownIO}
+                                className={`w-full p-2 text-xs rounded-md font-semibold transition-colors border ${crownSettings.loanType === 'IO' ? 'bg-[var(--title-color)] text-white border-[var(--title-color)] shadow-md' : 'bg-transparent text-[var(--title-color)] border-[var(--title-color)]/30 hover:bg-[var(--title-color)]/10'}`}
+                            >
+                                Set to Interest Only
+                            </button>
+                            <button
+                                onClick={handleCalculateCrownPI}
+                                className={`w-full p-2 text-xs rounded-md font-semibold transition-colors border ${crownSettings.loanType === 'P&I' ? 'bg-[var(--title-color)] text-white border-[var(--title-color)] shadow-md' : 'bg-transparent text-[var(--title-color)] border-[var(--title-color)]/30 hover:bg-[var(--title-color)]/10'}`}
+                            >
+                                Set to P & I
+                            </button>
+                        </div>
+                    </div>
+                     {crownSettings.loanType === 'IO' && (
+                        <div>
+                            <label className="block text-sm font-medium text-[var(--title-color)] mb-1">Interest Only Term (Years)</label>
+                            <input
+                                type="number"
+                                value={crownSettings.interestOnlyTerm || 0}
+                                onChange={e => updateCrownSettings('interestOnlyTerm', parseInt(e.target.value) || 0)}
+                                className={`${inputClasses} border-[var(--title-color)]/30 focus:border-[var(--title-color)]`}
+                                min={0}
+                                max={property.loanTerm}
+                            />
+                        </div>
+                    )}
+                    <div className="p-3 bg-[var(--input-bg-color)] rounded text-xs text-[var(--text-color-muted)] italic">
+                        The Crown strategy will use the higher of your target repayment or the required minimum. Any budget surplus will further accelerate debt reduction (Snowball).
+                    </div>
+                </div>
+            </div>
+
+            {/* Income & Expenses */}
+            <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Rental Income</label>
                         <div className="flex items-center gap-2">
@@ -321,57 +482,56 @@ const InvestmentPropertyCard: React.FC<{
                              <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-color-muted)]">%</span>
                         </div>
                     </div>
+                </div>
 
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <label className="text-sm font-medium text-[var(--text-color)]">Expenses</label>
-                            <Tooltip text="Enter all known expenses for this property.">
-                                <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-                            </Tooltip>
-                        </div>
-                        <div className="space-y-2">
-                            {property.expenses.map(exp => (
-                                <div key={exp.id} className="flex items-center gap-2">
-                                    <input type="text" value={exp.name} onChange={e => handleExpenseChange(exp.id, 'name', e.target.value)} className={`flex-grow ${inputClasses}`} placeholder="Expense Name"/>
-                                    <div className="relative w-36">
-                                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
-                                        <input type="number" value={exp.amount} onChange={e => handleExpenseChange(exp.id, 'amount', parseFloat(e.target.value) || 0)} className={`${inputClasses} w-full pl-7`} placeholder="Amount"/>
-                                    </div>
-                                    <select value={exp.frequency} onChange={e => handleExpenseChange(exp.id, 'frequency', e.target.value)} className={`${selectClasses} w-32`}>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="fortnightly">Fortnightly</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="quarterly">Quarterly</option>
-                                        <option value="annually">Annually</option>
-                                    </select>
-                                    <button onClick={() => removeExpense(exp.id)} className="text-red-400 hover:text-red-600 font-bold text-lg">×</button>
+                <div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <label className="text-sm font-medium text-[var(--text-color)]">Expenses</label>
+                        <Tooltip text="Enter all known expenses for this property.">
+                            <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
+                        </Tooltip>
+                    </div>
+                    <div className="space-y-2">
+                        {property.expenses.map(exp => (
+                            <div key={exp.id} className="flex items-center gap-2">
+                                <input type="text" value={exp.name} onChange={e => handleExpenseChange(exp.id, 'name', e.target.value)} className={`flex-grow ${inputClasses}`} placeholder="Expense Name"/>
+                                <div className="relative w-36">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
+                                    <input type="number" value={exp.amount} onChange={e => handleExpenseChange(exp.id, 'amount', parseFloat(e.target.value) || 0)} className={`${inputClasses} w-full pl-7`} placeholder="Amount"/>
                                 </div>
-                            ))}
-                        </div>
-                        <button onClick={addExpense} className="mt-2 text-sm text-[var(--title-color)] hover:opacity-80 transition-opacity font-semibold">+ Add Expense</button>
+                                <select value={exp.frequency} onChange={e => handleExpenseChange(exp.id, 'frequency', e.target.value)} className={`${selectClasses} w-32`}>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="fortnightly">Fortnightly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="quarterly">Quarterly</option>
+                                    <option value="annually">Annually</option>
+                                </select>
+                                <button onClick={() => removeExpense(exp.id)} className="text-red-400 hover:text-red-600 font-bold text-lg">×</button>
+                            </div>
+                        ))}
                     </div>
+                    <button onClick={addExpense} className="mt-2 text-sm text-[var(--title-color)] hover:opacity-80 transition-opacity font-semibold">+ Add Expense</button>
+                </div>
 
-                    <div className={`p-4 rounded-lg border ${netCashflow >= 0 ? 'border-[var(--color-positive-text)]' : 'border-[var(--color-negative-text)]'}`} style={{ backgroundColor: netCashflow >= 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
-                        <div className="flex justify-between items-center">
-                            <span className="font-bold text-lg" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Monthly Cashflow</span>
-                            <span className="font-extrabold text-2xl" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netCashflow)}</span>
+                <div className={`p-4 rounded-lg border ${netCashflow >= 0 ? 'border-[var(--color-positive-text)]' : 'border-[var(--color-negative-text)]'}`} style={{ backgroundColor: netCashflow >= 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
+                    <div className="flex justify-between items-center">
+                        <span className="font-bold text-lg" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Monthly Cashflow (Current Scenario)</span>
+                        <span className="font-extrabold text-2xl" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netCashflow)}</span>
+                    </div>
+                    <div className="mt-3 text-xs space-y-1 pt-2 border-t border-black/10 dark:border-white/10">
+                        <div className="flex justify-between items-center text-[var(--text-color-muted)]">
+                            <span>Rental Income (Monthly):</span>
+                            <span className="text-[var(--color-positive-text)] font-medium">+{formatCurrency(monthlyRental)}</span>
                         </div>
-                        <div className="mt-3 text-xs space-y-1 pt-2 border-t border-black/10 dark:border-white/10">
-                            <div className="flex justify-between items-center text-[var(--text-color-muted)]">
-                                <span>Rental Income (Monthly):</span>
-                                <span className="text-[var(--color-positive-text)] font-medium">+{formatCurrency(monthlyRental)}</span>
-                            </div>
-                             <div className="flex justify-between items-center text-[var(--text-color-muted)]">
-                                <span>Loan Repayments (Monthly):</span>
-                                <span className="text-[var(--color-negative-text)] font-medium">-{formatCurrency(monthlyRepayment)}</span>
-                            </div>
-                             <div className="flex justify-between items-center text-[var(--text-color-muted)]">
-                                <span>Total Expenses (Monthly):</span>
-                                <span className="text-[var(--color-negative-text)] font-medium">-{formatCurrency(monthlyExpenses)}</span>
-                            </div>
+                         <div className="flex justify-between items-center text-[var(--text-color-muted)]">
+                            <span>Current Repayments (Monthly):</span>
+                            <span className="text-[var(--color-negative-text)] font-medium">-{formatCurrency(monthlyRepayment)}</span>
+                        </div>
+                         <div className="flex justify-between items-center text-[var(--text-color-muted)]">
+                            <span>Total Expenses (Monthly):</span>
+                            <span className="text-[var(--color-negative-text)] font-medium">-{formatCurrency(monthlyExpenses)}</span>
                         </div>
                     </div>
-
                 </div>
             </div>
         </Card>
@@ -412,6 +572,12 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
             isFuture: false,
             purchaseDate: today,
             rentalGrowthRate: 3.5,
+            crownSettings: {
+                loanType: 'IO',
+                repayment: Math.ceil(minRepayment),
+                interestOnlyTerm: 5,
+                interestRate: 6.5 // Default to same as prop
+            },
             expenses: [
                 { id: 1, name: 'Rates', amount: 500, frequency: 'quarterly' },
                 { id: 2, name: 'Body Corp / Strata', amount: 600, frequency: 'quarterly' },
@@ -465,7 +631,7 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
                             <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold text-xl" style={{ color: investmentPropertiesNetCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Total Net Monthly Cashflow (Current)</span>
-                                    <Tooltip text="This is the combined cashflow from all investment properties. This amount is automatically added to your income (if positive) or expenses (if negative) in the 'Income & Expenses' tab.">
+                                    <Tooltip text="This is the combined cashflow from all investment properties using Current/Bank settings. This amount is automatically added to your income (if positive) or expenses (if negative) in the 'Income & Expenses' tab.">
                                         <InfoIcon className="h-5 w-5 text-[var(--text-color-muted)]"/>
                                     </Tooltip>
                                 </div>

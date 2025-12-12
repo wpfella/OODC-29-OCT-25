@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AppState } from '../types';
 import Card from './common/Card';
@@ -6,11 +7,13 @@ import { InfoIcon } from './common/IconComponents';
 import Tooltip from './common/Tooltip';
 import SliderInput from './common/SliderInput';
 import Accordion from './common/Accordion';
+import { calculateIOPayment } from '../hooks/useMortgageCalculations';
 
 interface Props {
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
   calculations: any;
+  setWarningToast: (message: string) => void;
 }
 
 const formatChartCurrency = (tick: number): string => {
@@ -23,40 +26,48 @@ const formatChartCurrency = (tick: number): string => {
   return `$${tick}`;
 };
 
-const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calculations }) => {
+const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calculations, setWarningToast }) => {
   const { bankLoanCalculation, getMonthlyAmount } = calculations;
   const { loan } = appState;
 
-  const handleLoanChange = (field: keyof typeof loan, value: any) => {
-    setAppState(prev => ({ ...prev, loan: { ...prev.loan, [field]: value } }));
-  };
-
-  if (bankLoanCalculation.termInYears === Infinity) {
-    return (
-        <Card>
-            <div className="text-center text-yellow-400 p-4">
-                <p className="font-bold text-lg">Unable to calculate breakdown.</p>
-                <p>Repayments are not high enough to cover the interest on the loan.</p>
-            </div>
-        </Card>
-    );
+  const formatCurrency = (value: number) => {
+    if (isNaN(value) || !isFinite(value)) return 'N/A';
+    return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
   }
+
+  const handleLoanChange = (field: keyof typeof loan, value: any) => {
+    let updates: Partial<typeof loan> = { [field]: value };
+
+    // Synchronous safety check for Repayment when changing Interest Rate
+    if (field === 'interestRate') {
+        const netLoan = Math.max(0, loan.amount - (loan.offsetBalance || 0));
+        if (netLoan > 0) {
+            const minRepayment = calculateIOPayment(netLoan, value, loan.frequency);
+            
+            if (loan.repayment < minRepayment) {
+                const adjustedRepayment = Math.ceil(minRepayment);
+                updates.repayment = adjustedRepayment;
+                setWarningToast(`Repayment adjusted to ${formatCurrency(adjustedRepayment)} to cover higher interest.`);
+            }
+        }
+    }
+    
+    setAppState(prev => ({ ...prev, loan: { ...prev.loan, ...updates } }));
+  };
 
   const netLoanAmount = Math.max(0, loan.amount - (loan.offsetBalance || 0));
   const monthlyRepayment = getMonthlyAmount(appState.loan.repayment, appState.loan.frequency);
   const annualRepayment = monthlyRepayment * 12;
 
-  const firstYearInterest = bankLoanCalculation.amortizationSchedule
+  const firstYearInterest = (bankLoanCalculation.amortizationSchedule || [])
     .slice(0, 12)
     .reduce((acc: number, curr: any) => acc + curr.interestPaid, 0);
   
-  const annualDebtReduction = annualRepayment - firstYearInterest;
+  const annualDebtReduction = Math.max(0, annualRepayment - firstYearInterest);
   const weeklyInterestPaid = firstYearInterest / 52;
 
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
-
   const processAmortizationSchedule = (schedule: any[]) => {
-    if (!schedule) return [];
+    if (!schedule || schedule.length === 0) return [];
 
     const yearlyData: { [year: number]: { Interest: number, Principal: number } } = {};
     schedule.forEach((d: any) => {
@@ -72,21 +83,23 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
         const year = parseInt(yearStr, 10);
         return {
             year: year,
-            Interest: yearlyData[year].Interest,
-            Principal: yearlyData[year].Principal,
+            Interest: isFinite(yearlyData[year].Interest) ? yearlyData[year].Interest : 0,
+            Principal: isFinite(yearlyData[year].Principal) ? yearlyData[year].Principal : 0,
         }
     });
   };
   
-  // Data for FIRST YEAR loan cost pie chart
   const firstYearPieData = [
-    { name: 'Interest Paid', value: firstYearInterest },
-    { name: 'Debt Reduction', value: annualDebtReduction },
+    { name: 'Interest Paid', value: isFinite(firstYearInterest) ? firstYearInterest : 0 },
+    { name: 'Debt Reduction', value: isFinite(annualDebtReduction) ? annualDebtReduction : 0 },
   ];
   const firstYearPieColors = ['var(--chart-color-interest)', 'var(--chart-color-principal)'];
 
 
-  const annualBankChartData = React.useMemo(() => processAmortizationSchedule(bankLoanCalculation.amortizationSchedule), [bankLoanCalculation.amortizationSchedule]);
+  const annualBankChartData = React.useMemo(() => {
+    if (bankLoanCalculation.termInYears === Infinity) return [];
+    return processAmortizationSchedule(bankLoanCalculation.amortizationSchedule);
+  }, [bankLoanCalculation.amortizationSchedule, bankLoanCalculation.termInYears]);
   
   const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -312,6 +325,21 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
       )
     }
   ];
+
+  // Move the early return check to the END to avoid hooks violation
+  if (bankLoanCalculation.termInYears === Infinity) {
+    return (
+        <div className="animate-fade-in">
+            <Card>
+                <div className="text-center text-yellow-400 p-4">
+                    <p className="font-bold text-lg">Unable to calculate breakdown.</p>
+                    <p>Repayments are not high enough to cover the interest on the loan.</p>
+                    <p className="text-sm mt-2 text-black/70">Adjust Repayments or Interest Rate in the Current Loan tab.</p>
+                </div>
+            </Card>
+        </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">

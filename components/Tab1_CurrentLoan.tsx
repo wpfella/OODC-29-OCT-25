@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppState, OtherDebt } from '../types';
+import { AppState, OtherDebt, Frequency } from '../types';
 import Card from './common/Card';
 import SliderInput from './common/SliderInput';
 import EditableField from './common/EditableField';
@@ -111,40 +111,113 @@ const Tab1_CurrentLoan: React.FC<Props> = ({ appState, setAppState, calculations
   const [repaymentInput, setRepaymentInput] = useState(String(loan.repayment));
   const debouncedLoan = useDebounce(loan, 500);
 
+  const formatCurrency = (value: number) => {
+    if (isNaN(value) || !isFinite(value)) return 'N/A';
+    return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+  }
+
   const handleLoanChange = (field: keyof typeof loan, value: any) => {
-    setAppState(prev => ({ ...prev, loan: { ...prev.loan, [field]: value } }));
+    let updates: Partial<typeof loan> = { [field]: value };
+    
+    // Safety Logic: Predict if new values will make loan unpayable
+    const nextRate = field === 'interestRate' ? value : loan.interestRate;
+    const nextAmount = field === 'amount' ? value : loan.amount;
+    const nextOffset = field === 'offsetBalance' ? value : (loan.offsetBalance || 0);
+    const nextFrequency = field === 'frequency' ? value : loan.frequency;
+    
+    // Use the *new* repayment if it's being updated, otherwise current
+    let nextRepayment = field === 'repayment' ? value : loan.repayment;
+
+    const netLoan = Math.max(0, nextAmount - nextOffset);
+    
+    if (netLoan > 0) {
+        // Calculate minimum IO repayment based on the PREDICTED state
+        const minRepayment = calculateIOPayment(netLoan, nextRate, nextFrequency);
+        
+        // If the new/current repayment is less than minimum required to cover interest
+        if (nextRepayment < minRepayment) {
+            // Auto-correct repayment to minimum + buffer
+            const adjustedRepayment = Math.ceil(minRepayment);
+            updates.repayment = adjustedRepayment;
+            
+            // Update local input state so UI reflects the jump immediately
+            setRepaymentInput(String(adjustedRepayment));
+            
+            // Only show toast if we are forcing a change that wasn't the user's direct input (e.g. rate change forced repayment up)
+            // or if user entered a too-low repayment
+            setWarningToast(`Repayment adjusted to ${formatCurrency(adjustedRepayment)} to cover interest at ${nextRate}%.`);
+        }
+    }
+
+    setAppState(prev => ({ ...prev, loan: { ...prev.loan, ...updates } }));
   };
 
   const handlePersonChange = (index: number, field: keyof typeof people[0], value: any) => {
-    const newPeople = [...people];
-    const person = newPeople[index];
-    
     let processedValue = value;
     if (field === 'age') {
         processedValue = parseInt(value, 10) || 0;
     }
-    
-    newPeople[index] = { ...person, [field]: processedValue };
-    setAppState(prev => ({ ...prev, people: newPeople }));
+
+    setAppState(prev => {
+        const newPeople = [...prev.people];
+        const personToUpdate = newPeople[index];
+        newPeople[index] = { ...personToUpdate, [field]: processedValue };
+        
+        let newIncomes = prev.incomes;
+
+        // If name changes, try to sync with the corresponding income
+        if (field === 'name') {
+            const newName = String(processedValue);
+            // Find income with matching ID
+            const incomeIndex = newIncomes.findIndex(inc => inc.id === personToUpdate.id);
+            
+            if (incomeIndex !== -1) {
+                newIncomes = [...newIncomes];
+                const possessiveName = newName.trim().endsWith('s') ? `${newName}' Income` : `${newName}'s Income`;
+                newIncomes[incomeIndex] = {
+                    ...newIncomes[incomeIndex],
+                    name: possessiveName
+                };
+            }
+        }
+        
+        return { ...prev, people: newPeople, incomes: newIncomes };
+    });
   };
 
   const toggleBorrowers = () => {
     setAppState(prev => {
       if (prev.people.length > 1) {
-        // Switch to one borrower
-        return { ...prev, people: [prev.people[0]] };
+        // Switch to one borrower: Remove the last person
+        const personToRemove = prev.people[prev.people.length - 1];
+        const newPeople = prev.people.slice(0, prev.people.length - 1);
+        
+        // Remove the linked income
+        const newIncomes = prev.incomes.filter(inc => inc.id !== personToRemove.id);
+
+        return { ...prev, people: newPeople, incomes: newIncomes };
       } else {
         // Switch to two borrowers
+        const newId = Date.now();
         const currentPeople = prev.people.length > 0 ? [...prev.people] : [{ id: 1, name: 'Person 1', age: 35 }];
+        const newPerson = { id: newId, name: 'Person 2', age: 34 };
+        
+        // Add linked income
+        const newIncome = { 
+            id: newId, 
+            name: "Person 2's Income", 
+            amount: 4000, 
+            frequency: 'monthly' as const 
+        };
+
         return {
           ...prev,
-          people: [...currentPeople, { id: Date.now(), name: 'Person 2', age: 34 }]
+          people: [...currentPeople, newPerson],
+          incomes: [...prev.incomes, newIncome]
         };
       }
     });
   };
-
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
   const netLoanAmount = Math.max(0, loan.amount - (loan.offsetBalance || 0));
   const lvr = loan.propertyValue > 0 ? (loan.amount / loan.propertyValue) * 100 : 0;
@@ -161,42 +234,9 @@ const Tab1_CurrentLoan: React.FC<Props> = ({ appState, setAppState, calculations
       return;
     }
     
-    const netLoanAmount = Math.max(0, loan.amount - (loan.offsetBalance || 0));
-    if (netLoanAmount <= 0) {
-      handleLoanChange('repayment', numericValue);
-      return;
-    }
-    
-    // Check against Interest Only amount to allow for terms > 30 years
-    const minRepayment = calculateIOPayment(netLoanAmount, loan.interestRate, loan.frequency);
-
-    if (numericValue < minRepayment) {
-      const newRepayment = Math.ceil(minRepayment);
-      handleLoanChange('repayment', newRepayment); 
-      setWarningToast(`Repayment was too low to cover interest. Adjusted to minimum of ${formatCurrency(newRepayment)}.`);
-    } else {
-      handleLoanChange('repayment', numericValue);
-    }
+    // Pass to main handler which contains safety logic
+    handleLoanChange('repayment', numericValue);
   };
-
-  useEffect(() => {
-    const { amount, offsetBalance, interestRate, frequency, repayment } = debouncedLoan;
-    const netLoanAmount = Math.max(0, amount - (offsetBalance || 0));
-    if (netLoanAmount <= 0) return;
-
-    // Check against Interest Only amount to allow for terms > 30 years
-    const minRepayment = calculateIOPayment(netLoanAmount, interestRate, frequency);
-
-    if (repayment < minRepayment) {
-      const newRepayment = Math.ceil(minRepayment);
-      setAppState(prev => {
-          if (prev.loan.repayment === newRepayment) return prev; // Prevent unnecessary update loop
-          return { ...prev, loan: { ...prev.loan, repayment: newRepayment } };
-      });
-      setWarningToast(`Repayment was too low to cover interest. Adjusted to minimum of ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(newRepayment)}.`);
-    }
-  }, [debouncedLoan.amount, debouncedLoan.interestRate, debouncedLoan.offsetBalance, debouncedLoan.frequency, setAppState, setWarningToast]);
-
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">

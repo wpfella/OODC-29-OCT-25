@@ -15,7 +15,10 @@ interface Props {
   calculations: any;
 }
 
-const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+const formatCurrency = (value: number) => {
+    if (isNaN(value) || !isFinite(value)) return 'N/A';
+    return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+};
 
 const formatChartCurrency = (tick: number): string => {
   if (Math.abs(tick) >= 1000000) {
@@ -27,75 +30,8 @@ const formatChartCurrency = (tick: number): string => {
   return `$${tick}`;
 };
 
-const CustomBarTooltip: React.FC<{ active?: boolean, payload?: any[], formatter: (value: number) => string, unit?: string }> = ({ active, payload, formatter, unit }) => {
-    if (active && payload && payload.length) {
-        const bankData = payload.find(p => p.dataKey === 'Bank');
-        const crownData = payload.find(p => p.dataKey === 'Crown Money');
-        const difference = (bankData?.value || 0) - (crownData?.value || 0);
-        
-        return (
-            <div className="p-3 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-lg text-sm shadow-lg print:hidden space-y-1">
-                {bankData && (
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: bankData.fill }}></div>
-                        <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Bank: ${formatter(bankData.value)}`}</p>
-                    </div>
-                )}
-                {crownData && (
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: crownData.fill }}></div>
-                        <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Crown Money: ${formatter(crownData.value)}`}</p>
-                    </div>
-                )}
-                
-                 {difference > 0 && (
-                     <>
-                        <hr className="my-1 border-[var(--border-color)] opacity-50" />
-                        <p style={{ color: 'var(--tooltip-text-color-muted)' }}>
-                            {`Savings: `}
-                            <span className="font-semibold" style={{color: 'var(--tooltip-text-color-positive)'}}>
-                                {unit === 'years' ? `${difference.toFixed(2)} years` : formatter(difference)}
-                            </span>
-                        </p>
-                    </>
-                )}
-            </div>
-        );
-    }
-    // Fallback logic
-    if (active && payload && payload.length) {
-         return (
-            <div className="p-3 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-lg text-sm shadow-lg print:hidden space-y-1">
-                {payload.map((pld: any) => (
-                    <div key={pld.dataKey} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: pld.fill }}></div>
-                        <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`${pld.name}: ${formatter(pld.value)}`}</p>
-                    </div>
-                ))}
-            </div>
-        );
-    }
-    return null;
-};
-
 const CustomAreaTooltip: React.FC<{ active?: boolean, payload?: any[], label?: string, formatter: (value: number) => string }> = ({ active, payload, label, formatter }) => {
     if (active && payload && payload.length) {
-        const eventPayload = payload.find(p => p.payload.event);
-
-        // If it's an event tooltip (from the Scatter plot)
-        if (eventPayload && eventPayload.payload.event) {
-            const { description, amount, type } = eventPayload.payload.event;
-            return (
-                <div className="p-2 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-md text-sm shadow-lg print:hidden">
-                    <p className="label text-[var(--tooltip-text-color)] font-bold mb-1">{description}</p>
-                    <p style={{ color: `var(--tooltip-text-color-${type === 'income' ? 'positive' : 'negative'})` }}>
-                        {`${type === 'income' ? 'Income: +' : 'Expense: -'}${formatter(amount)}`}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--tooltip-text-color-muted)' }}>{`At Year ${parseFloat(label || '0').toFixed(2)}`}</p>
-                </div>
-            );
-        }
-        
         // Original tooltip logic for the Area chart lines
         const bankData = payload.find(p => p.dataKey === 'Bank');
         const crownData = payload.find(p => p.dataKey === 'Crown Money');
@@ -104,7 +40,7 @@ const CustomAreaTooltip: React.FC<{ active?: boolean, payload?: any[], label?: s
 
         return (
             <div className="p-3 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-lg text-sm shadow-lg print:hidden space-y-1">
-                <p className="label text-[var(--tooltip-text-color)] font-bold mb-1">{`Year: ${Number(label).toFixed(2)} (Age: ${Math.floor(age)})`}</p>
+                <p className="label text-[var(--tooltip-text-color)] font-bold mb-1">{`Year: ${Number(label).toFixed(1)} (Age: ${Math.floor(age)})`}</p>
                  <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--chart-color-bank)' }}></div>
                     <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Bank Balance: ${formatter(bankData?.value || 0)}`}</p>
@@ -130,106 +66,43 @@ const CustomAreaTooltip: React.FC<{ active?: boolean, payload?: any[], label?: s
     return null;
 };
 
-const CustomMonthlyTooltip: React.FC<{ active?: boolean, payload?: any[], label?: string, formatter: (value: number) => string }> = ({ active, payload, label, formatter }) => {
+const CustomSnapshotTooltip = ({ active, payload, label, type }: any) => {
     if (active && payload && payload.length) {
-        const bankData = payload.find(p => p.dataKey === 'Bank');
-        const crownData = payload.find(p => p.dataKey === 'Crown Money');
-        const difference = (bankData?.value || 0) - (crownData?.value || 0);
+        // Find data by key to be robust
+        const bankData = payload.find((p: any) => p.dataKey === 'Bank');
+        const crownData = payload.find((p: any) => p.dataKey === 'Crown Money');
+
+        const bankVal = bankData ? bankData.value : 0;
+        const crownVal = crownData ? crownData.value : 0;
+        const savings = bankVal - crownVal;
+
+        const formatValue = (val: number) => {
+            if (type === 'currency') return formatCurrency(val);
+            return `${val.toFixed(1)} years`;
+        };
 
         return (
-            <div className="p-3 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-lg text-sm shadow-lg print:hidden space-y-1">
-                <p className="label text-[var(--tooltip-text-color)] font-bold mb-1">{label === '0' ? 'Starting Balance' : `End of Month: ${label}`}</p>
+            <div className="p-3 bg-[var(--tooltip-bg-color)] border border-[var(--border-color)] rounded-lg text-sm shadow-lg print:hidden space-y-1 z-50">
                  <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--chart-color-bank)' }}></div>
-                    <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Bank Balance: ${formatter(bankData?.value || 0)}`}</p>
+                    <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Bank: ${formatValue(bankVal)}`}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--chart-color-crown)' }}></div>
-                    <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Crown Balance: ${formatter(crownData?.value || 0)}`}</p>
+                    <p className="font-semibold" style={{ color: 'var(--tooltip-text-color)' }}>{`Crown Money: ${formatValue(crownVal)}`}</p>
                 </div>
-                {difference < 0 && (
-                    <>
-                        <hr className="my-1 border-[var(--border-color)] opacity-50" />
-                        <p style={{ color: 'var(--tooltip-text-color-muted)' }}>
-                            {`Ahead by: `}
-                            <span className="font-semibold" style={{color: 'var(--tooltip-text-color-positive)'}}>
-                                {`${formatter(Math.abs(difference))}`}
-                            </span>
-                        </p>
-                    </>
-                )}
+                <hr className="my-1 border-[var(--border-color)] opacity-50" />
+                <p style={{ color: 'var(--tooltip-text-color-muted)' }}>
+                    {`Savings: `}
+                    <span className="font-semibold" style={{color: 'var(--chart-color-wealth)'}}>
+                        {`${formatValue(savings)}`}
+                    </span>
+                </p>
             </div>
         );
     }
     return null;
 };
-
-const FutureEventsImpactSummary: React.FC<{ appState: AppState; calculations: any }> = ({ appState, calculations }) => {
-    const { futureChanges, futureLumpSums } = appState;
-    if (futureChanges.length === 0 && futureLumpSums.length === 0) {
-        return null;
-    }
-
-    const baselineCalculation = useMemo(() => {
-        const { surplus } = calculations;
-        const { loan, otherDebts, crownMoneyInterestRate } = appState;
-
-        if (surplus <= 0) return { termInYears: Infinity, totalInterest: Infinity };
-
-        const consolidatedAmount = (otherDebts || []).reduce((sum, d) => sum + d.amount, 0);
-        const crownLoanForCalc = {
-            amount: (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0),
-            interestRate: crownMoneyInterestRate,
-            repayment: surplus,
-            frequency: 'monthly' as const,
-            offsetBalance: 0,
-        };
-        // Calculate baseline WITHOUT any future events
-        const result = calculateAmortization(crownLoanForCalc, { strategy: 'crown' });
-        
-        let effectiveTermInYears = result.termInYears;
-        if (result.amortizationSchedule.length > 0 && result.termInYears !== Infinity) {
-             const offset = loan.offsetBalance || 0;
-             // In this context (0 offset in calc), Net Term is same as Gross Term unless offset passed (which is 0)
-             // So this is fine.
-        }
-        return result;
-
-    }, [appState, calculations]);
-
-    const actualCalculation = calculations.crownMoneyLoanCalculation;
-
-    if (baselineCalculation.termInYears === Infinity || actualCalculation.termInYears === Infinity) {
-        return null; // Don't show if one is unpayable
-    }
-
-    const termDiff = baselineCalculation.termInYears - actualCalculation.termInYears;
-    const interestDiff = baselineCalculation.totalInterest - actualCalculation.totalInterest;
-
-    if (Math.abs(termDiff) < 1/24 && Math.abs(interestDiff) < 100) {
-        return null; // Don't show for negligible impact
-    }
-    
-    const isPositive = termDiff > 0;
-    const termText = `${Math.abs(termDiff).toFixed(2)} years ${isPositive ? 'sooner' : 'later'}`;
-    const interestText = `${formatCurrency(Math.abs(interestDiff))} in interest`;
-    
-    return (
-        <div className={`p-4 rounded-lg border mb-6 ${isPositive ? 'bg-[var(--color-positive-bg)] border-[var(--color-positive-text)]' : 'bg-[var(--color-negative-bg)] border-[var(--color-negative-text)]'}`}>
-            <div className="flex items-center gap-3">
-                <InfoIcon className={`h-6 w-6 flex-shrink-0 ${isPositive ? 'text-[var(--color-positive-text)]' : 'text-[var(--color-negative-text)]'}`} />
-                <div>
-                    <h4 className={`font-bold ${isPositive ? 'text-[var(--color-positive-text)]' : 'text-[var(--color-negative-text)]'}`}>Future Events Included</h4>
-                    <p className={`text-sm ${isPositive ? 'text-[var(--color-positive-text)]' : 'text-[var(--color-negative-text)]'}`}>
-                        Based on your {futureChanges.length > 0 ? `${futureChanges.length} planned change(s)` : ''}{futureChanges.length > 0 && futureLumpSums.length > 0 ? ' and ' : ''}{futureLumpSums.length > 0 ? `${futureLumpSums.length} lump sum event(s)` : ''}, your Crown Money forecast has been adjusted.
-                        You will be debt-free <strong>{termText}</strong> and {isPositive ? 'save' : 'pay'} an extra <strong>{interestText}</strong>.
-                    </p>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 
 const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => {
   const [additionalMonthlyIncome, setAdditionalMonthlyIncome] = useState(0);
@@ -239,9 +112,7 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
       crownMoneyLoanCalculation: initialCrownLoanCalculation,
       totalMonthlyIncome,
       totalMonthlyExpenses,
-      people,
-      getMonthlyAmount,
-      surplus
+      people
     } = calculations;
   
   const youngestPersonAge = Math.min(...people.map((p: any) => p.age));
@@ -252,34 +123,25 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
     }
     
     const { loan, futureChanges, futureLumpSums, crownMoneyInterestRate, otherDebts } = appState;
-    
-    // We need to re-run the core logic from the hook with the adjusted income
     const adjustedSurplus = (totalMonthlyIncome + additionalMonthlyIncome) - totalMonthlyExpenses;
 
     if (adjustedSurplus <= 0) {
         return { termInYears: Infinity, totalInterest: Infinity, totalPaid: Infinity, amortizationSchedule: [] };
     }
     
-    // This is a simplified version of the hook logic for the "what if" scenario
     const consolidatedAmount = (otherDebts || []).reduce((sum, d) => sum + d.amount, 0);
-    const primaryLoanBalance = (loan.amount + consolidatedAmount) - (loan.offsetBalance || 0);
-
-    const minPrimaryPayment = calculatePIPayment(primaryLoanBalance, crownMoneyInterestRate, 30, 'monthly');
-    const extraPayment = Math.max(0, adjustedSurplus - minPrimaryPayment);
-
     const netPrimaryLoanAmount = loan.amount - (loan.offsetBalance || 0);
     const crownLoanDetailsForPrimary: LoanDetails = {
         ...loan, amount: netPrimaryLoanAmount, offsetBalance: 0, interestRate: crownMoneyInterestRate,
     };
     
-    const result = calculateAmortization(crownLoanDetailsForPrimary, {
+    const minPrimaryPayment = calculatePIPayment(netPrimaryLoanAmount + consolidatedAmount, crownMoneyInterestRate, 30, 'monthly');
+    const extraPayment = Math.max(0, adjustedSurplus - minPrimaryPayment);
+
+    return calculateAmortization(crownLoanDetailsForPrimary, {
         extraMonthlyPayment: extraPayment,
         futureChanges, futureLumpSums, strategy: 'crown'
     });
-
-    // Consistent logic: In this 'what if', we start with Net Debt (offset 0), so Term is Net Term.
-    // No adjustment needed for termInYears here as offsetBalance is 0.
-    return result;
 
   }, [appState, additionalMonthlyIncome, initialCrownLoanCalculation, totalMonthlyIncome, totalMonthlyExpenses]);
   
@@ -303,8 +165,6 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
     }];
 
     const maxMonths = Math.max(bankSchedule.length, crownSchedule.length);
-    
-    // Track if we have already plotted the zero point for Crown Money
     let hasCrownHitZero = false;
 
     for (let i = 0; i < maxMonths; i++) {
@@ -315,12 +175,10 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
         const bankOffset = bankPoint?.offsetBalance ?? 0;
         const bankBalNet = Math.max(0, bankBalGross - bankOffset);
 
-        // Crown Logic
         const crownPoint = crownSchedule[i];
         let crownVal: number | null = null;
-
-        // Determine raw net balance for Crown
         let crownNet = 0;
+        
         if (crownPoint) {
              const crownBalGross = (crownPoint as any)?.totalRemainingBalance ?? crownPoint?.remainingBalance ?? 0;
              const crownOffset = crownPoint?.offsetBalance ?? 0;
@@ -330,20 +188,16 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
         }
 
         if (hasCrownHitZero) {
-            // If we already hit zero previously, all subsequent points are null (don't draw line)
             crownVal = null;
         } else {
             if (crownNet <= 0.01) {
-                // We hit zero for the first time
                 crownVal = 0;
                 hasCrownHitZero = true;
             } else {
-                // Still have balance
                 crownVal = crownNet;
             }
         }
         
-        // Edge case: If crown schedule ended (undefined point) but we haven't marked zero yet
         if (!crownPoint && !hasCrownHitZero) {
              crownVal = 0;
              hasCrownHitZero = true;
@@ -352,136 +206,62 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
         data.push({
             year: month / 12,
             age: youngestPersonAge + (month / 12),
-            'Bank': bankBalNet > 0 ? bankBalNet : 0,
-            'Crown Money': crownVal
+            'Bank': isFinite(bankBalNet) ? bankBalNet : 0,
+            'Crown Money': crownVal === null ? null : (isFinite(crownVal) ? crownVal : 0)
         });
     }
     
     return data;
   }, [bankLoanCalculation, adjustedCrownLoanCalculation, loan, appState.otherDebts, youngestPersonAge]);
 
-  const first12MonthsData = useMemo(() => {
-    const bankSchedule = bankLoanCalculation.amortizationSchedule.slice(0, 12);
-    const crownSchedule = crownMoneyLoanCalculation.amortizationSchedule.slice(0, 12);
-
-    if (bankSchedule.length === 0 && crownSchedule.length === 0) return [];
-    
-    const bankStartDebt = loan.amount - (loan.offsetBalance || 0);
-    const consolidatedAmount = (appState.otherDebts || []).reduce((sum, debt) => sum + debt.amount, 0);
-    const crownStartDebt = (loan.amount - (loan.offsetBalance || 0)) + consolidatedAmount;
-
-    const data: {month: number, 'Bank': number, 'Crown Money': number}[] = [{
-        month: 0,
-        'Bank': bankStartDebt,
-        'Crown Money': crownStartDebt,
-    }];
-    
-    for (let i = 0; i < 12; i++) {
-        const bankPoint = bankSchedule[i];
-        const bankBalGross = bankPoint?.remainingBalance ?? 0;
-        const bankOffset = bankPoint?.offsetBalance ?? 0;
-        const bankBalNet = bankPoint ? Math.max(0, bankBalGross - bankOffset) : 0;
-
-        const crownPoint = crownSchedule[i];
-        const crownBalGross = (crownPoint as any)?.totalRemainingBalance ?? crownPoint?.remainingBalance ?? 0;
-        const crownOffset = crownPoint?.offsetBalance ?? 0;
-        const crownBalNet = crownPoint ? Math.max(0, crownBalGross - crownOffset) : 0;
-
-        data.push({
-            month: i + 1,
-            'Bank': bankBalNet,
-            'Crown Money': crownBalNet,
-        });
-    }
-
-    return data;
-  }, [bankLoanCalculation.amortizationSchedule, crownMoneyLoanCalculation.amortizationSchedule, loan.amount, loan.offsetBalance, appState.otherDebts]);
-  
-  const maxStartDebt = Math.max(
-      loan.amount - (loan.offsetBalance || 0), 
-      loanBalanceChartData[0]['Crown Money'] || 0
-  );
-  const yAxisMax = Math.ceil((maxStartDebt + 50000) / 50000) * 50000;
-
-  const handleRateChange = (value: number) => {
-    setAppState(prev => ({ ...prev, crownMoneyInterestRate: value }));
-  };
+  const snapshotChartsData = useMemo(() => {
+    return {
+        payoff: [
+            {
+                name: 'Payoff Time',
+                Bank: bankLoanCalculation.termInYears,
+                'Crown Money': crownMoneyLoanCalculation.termInYears,
+            }
+        ],
+        interest: [
+            {
+                name: 'Total Interest',
+                Bank: bankLoanCalculation.totalInterest,
+                'Crown Money': crownMoneyLoanCalculation.totalInterest,
+            }
+        ]
+    };
+  }, [bankLoanCalculation, crownMoneyLoanCalculation]);
   
   const isBankLoanValid = bankLoanCalculation.termInYears !== Infinity;
   const isCrownLoanValid = crownMoneyLoanCalculation.termInYears !== Infinity;
 
-  const primaryInterestSaved = isBankLoanValid && isCrownLoanValid ? bankLoanCalculation.totalInterest - crownMoneyLoanCalculation.primaryLoanInterest : 0;
-  const otherDebtsInterestSaved = 0; // Bank calculation no longer includes other debts
-  const totalInterestSaved = primaryInterestSaved + otherDebtsInterestSaved;
-
-  const bankDebtFreeAges = appState.people.reduce((acc, p) => {
-    acc[p.id] = isBankLoanValid ? Math.ceil(p.age + bankLoanCalculation.termInYears) : "N/A";
-    return acc;
-  }, {} as Record<number, number | string>);
-
-  const crownDebtFreeAges = appState.people.reduce((acc, p) => {
-    acc[p.id] = isCrownLoanValid ? Math.ceil(p.age + crownMoneyLoanCalculation.termInYears) : "N/A";
-    return acc;
-  }, {} as Record<number, number | string>);
-
-  const yearsChartData = [
-    { 
-      name: 'Payoff Time', 
-      Bank: isBankLoanValid ? bankLoanCalculation.termInYears : 0, 
-      'Crown Money': isCrownLoanValid ? crownMoneyLoanCalculation.termInYears : 0 
-    },
-  ];
-
-  const interestChartData = [
-    { 
-      name: 'Interest Paid', 
-      Bank: isBankLoanValid ? bankLoanCalculation.totalInterest : 0, 
-      'Crown Money': isCrownLoanValid ? crownMoneyLoanCalculation.totalInterest : 0 
-    },
-  ];
-  
-  const SliderLabel = () => (
-    <div className='flex items-center justify-center gap-2'>
-        <span className='text-sm font-medium text-[var(--text-color)] print:text-black'>Crown Money Interest Rate</span>
-        <Tooltip text="Adjust this rate to match the current interest rate offered for the Crown Money facility. This will affect the speed of debt reduction.">
-            <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-        </Tooltip>
-    </div>
-  );
-  
-  const surplusForDebtReduction = totalMonthlyIncome - totalMonthlyExpenses;
-  
-  const maxYear = loanBalanceChartData.length > 0 ? Math.ceil(loanBalanceChartData[loanBalanceChartData.length - 1].year) : 30;
-  const xTickInterval = Math.max(1, Math.floor(maxYear / 6)); 
-  const xTicks = Array.from({ length: Math.floor(maxYear / xTickInterval) + 1 }, (_, i) => i * xTickInterval);
-  if (!xTicks.includes(maxYear) && maxYear > 0) xTicks.push(maxYear);
+  const totalInterestSaved = isBankLoanValid && isCrownLoanValid ? bankLoanCalculation.totalInterest - crownMoneyLoanCalculation.primaryLoanInterest : 0;
 
   const { bankYear1, crownYear1, bankLifetime, crownLifetime } = useMemo(() => {
-    const bankYear1Interest = bankLoanCalculation.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.interestPaid, 0);
-    const bankYear1Principal = bankLoanCalculation.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.principalPaid, 0);
-
+    // Basic data collection with safety fallbacks
     return {
         bankYear1: {
-            homeLoanInterest: bankYear1Interest,
-            principal: bankYear1Principal,
+            homeLoanInterest: bankLoanCalculation.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.interestPaid, 0) || 0,
+            principal: bankLoanCalculation.amortizationSchedule.slice(0, 12).reduce((sum, item) => sum + item.principalPaid, 0) || 0,
         },
         crownYear1: {
-            principal: (surplus * 12) - (crownMoneyLoanCalculation.year1PrimaryLoanInterest + crownMoneyLoanCalculation.year1OtherDebtsInterest),
-            homeLoanInterest: crownMoneyLoanCalculation.year1PrimaryLoanInterest,
-            otherDebtsInterest: crownMoneyLoanCalculation.year1OtherDebtsInterest
+            principal: crownMoneyLoanCalculation.year1PrimaryOnlyPrincipalPaid || 0,
+            homeLoanInterest: crownMoneyLoanCalculation.year1PrimaryLoanInterest || 0,
+            otherDebtsInterest: crownMoneyLoanCalculation.year1OtherDebtsInterest || 0
         },
         bankLifetime: {
             principal: (loan.amount - (loan.offsetBalance || 0)),
-            homeLoanInterest: bankLoanCalculation.totalInterest,
+            homeLoanInterest: bankLoanCalculation.totalInterest || 0,
             otherDebtsInterest: 0
         },
         crownLifetime: {
             principal: (loan.amount - (loan.offsetBalance || 0)) + (appState.otherDebts || []).reduce((s, d) => s + d.amount, 0),
-            homeLoanInterest: crownMoneyLoanCalculation.primaryLoanInterest,
-            otherDebtsInterest: crownMoneyLoanCalculation.otherDebtsInterest
+            homeLoanInterest: crownMoneyLoanCalculation.primaryLoanInterest || 0,
+            otherDebtsInterest: crownMoneyLoanCalculation.otherDebtsInterest || 0
         },
     };
-  }, [bankLoanCalculation, crownMoneyLoanCalculation, loan, appState.otherDebts, surplus]);
+  }, [bankLoanCalculation, crownMoneyLoanCalculation, loan, appState.otherDebts]);
 
   const DonutChartCard: React.FC<{
       title: string;
@@ -489,28 +269,42 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
       otherDebtsPrincipal?: number;
       homeLoanInterest: number;
       otherDebtsInterest: number;
-      usePrincipalAsDenominator?: boolean;
-      showInterestAmount?: boolean;
-      principalWithConsolidation?: number;
-      principalWithoutConsolidation?: number;
       displayMode?: 'default' | 'largePrincipal';
-  }> = ({ title, homeLoanPrincipal, otherDebtsPrincipal = 0, homeLoanInterest, otherDebtsInterest, usePrincipalAsDenominator = false, showInterestAmount = true, principalWithConsolidation, principalWithoutConsolidation, displayMode = 'default' }) => {
-      const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
-      const totalPrincipal = homeLoanPrincipal + otherDebtsPrincipal;
-      const totalInterest = homeLoanInterest + otherDebtsInterest;
+  }> = ({ title, homeLoanPrincipal, otherDebtsPrincipal = 0, homeLoanInterest, otherDebtsInterest, displayMode = 'default' }) => {
+      
+      const safeHomeLoanPrincipal = isFinite(homeLoanPrincipal) ? homeLoanPrincipal : 0;
+      const safeOtherDebtsPrincipal = isFinite(otherDebtsPrincipal) ? otherDebtsPrincipal : 0;
+      const safeHomeLoanInterest = isFinite(homeLoanInterest) ? homeLoanInterest : 0;
+      const safeOtherDebtsInterest = isFinite(otherDebtsInterest) ? otherDebtsInterest : 0;
+
+      const totalPrincipal = safeHomeLoanPrincipal + safeOtherDebtsPrincipal;
+      const totalInterest = safeHomeLoanInterest + safeOtherDebtsInterest;
+      
+      // Prevent crash if total interest is massive/infinite
+      if (!isFinite(totalInterest) || totalInterest > 1000000000) {
+          return (
+              <div className="text-center p-2 bg-black/5 dark:bg-white/5 rounded-lg h-60 flex flex-col justify-center items-center">
+                  <h5 className="font-semibold text-red-400">Calculation Unavailable</h5>
+                  <p className="text-xs text-[var(--text-color-muted)]">Interest values are too high to display.</p>
+              </div>
+          );
+      }
+
       const data = [
-          { name: 'Principal', value: totalPrincipal },
-          { name: 'Interest', value: totalInterest },
+          { name: 'Principal', value: Math.max(0, totalPrincipal) },
+          { name: 'Interest', value: Math.max(0, totalInterest) },
       ];
-      const totalPaid = totalPrincipal + totalInterest;
-      const denominator = usePrincipalAsDenominator ? totalPrincipal : totalPaid;
-      const interestPercent = denominator > 0 ? (totalInterest / denominator) * 100 : 0;
+      if (data.every(d => d.value === 0)) data[0].value = 1;
+
+      const totalAmount = totalPrincipal + totalInterest;
+      const interestPercent = totalAmount > 0 ? (totalInterest / totalAmount) * 100 : 0;
+      const principalPercent = totalAmount > 0 ? (totalPrincipal / totalAmount) * 100 : 0;
 
       return (
           <div className="text-center p-2 bg-black/5 dark:bg-white/5 rounded-lg flex flex-col justify-between">
               <h5 className={`font-semibold ${title.includes('Crown') ? 'text-lg' : 'text-base'}`}>{title}</h5>
               <div className={`w-full relative ${displayMode === 'largePrincipal' ? 'h-52' : 'h-40'}`}>
-                  <ResponsiveContainer minWidth={0} minHeight={0}>
+                  <ResponsiveContainer minWidth={0} minHeight={0} width="100%" height="100%">
                       <PieChart>
                           <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" paddingAngle={2}>
                               <Cell fill="var(--chart-color-principal)" />
@@ -519,133 +313,78 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
                       </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className={`font-bold ${displayMode === 'largePrincipal' ? 'text-3xl' : 'text-2xl'}`} style={{color: 'var(--chart-color-interest)'}}>{interestPercent.toFixed(0)}%</span>
-                      <span className="text-xs text-[var(--text-color-muted)]">Interest</span>
+                      {displayMode === 'largePrincipal' ? (
+                          <>
+                              <span className="font-bold text-3xl" style={{color: 'var(--chart-color-principal)'}}>{principalPercent.toFixed(0)}%</span>
+                              <span className="text-xs text-[var(--text-color-muted)]">Principal</span>
+                          </>
+                      ) : (
+                          <>
+                              <span className="font-bold text-2xl" style={{color: 'var(--chart-color-interest)'}}>{interestPercent.toFixed(0)}%</span>
+                              <span className="text-xs text-[var(--text-color-muted)]">Interest</span>
+                          </>
+                      )}
                   </div>
               </div>
-              
-              {displayMode === 'largePrincipal' ? (
-                <>
-                    <div className="flex justify-between items-baseline mt-2 px-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{backgroundColor: 'var(--chart-color-principal)'}}></div>
-                            <span className="text-xl font-semibold text-[var(--text-color-muted)]">
-                                {otherDebtsPrincipal > 0 ? 'Home Loan' : 'Principal'}
-                            </span>
-                        </div>
-                        <span className="text-5xl font-bold text-[var(--text-color)]">{formatCurrency(homeLoanPrincipal)}</span>
+              <div className="text-xs text-left px-1 mt-1 space-y-1">
+                  <div className="flex items-center">
+                        <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-principal)'}}></div>Principal</span>
+                        <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(safeHomeLoanPrincipal)}</span>
                     </div>
-                    {otherDebtsPrincipal > 0 && (
-                        <div className="flex justify-between items-baseline mt-1 px-2">
-                            <span className="text-lg font-semibold text-[var(--text-color-muted)] pl-5">Other Debts</span>
-                            <span className="text-3xl font-bold text-[var(--text-color)]">{formatCurrency(otherDebtsPrincipal)}</span>
+                    {(safeHomeLoanInterest > 0 && displayMode !== 'largePrincipal') && (
+                        <div className="flex items-center pl-3.5">
+                            <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-interest)'}}></div>Interest</span>
+                            <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(safeHomeLoanInterest)}</span>
                         </div>
                     )}
-                </>
-              ) : (
-                <div className="text-xs text-left px-1 mt-1 space-y-1">
-                  {principalWithConsolidation && typeof principalWithoutConsolidation !== 'undefined' ? (
-                      <>
-                          <div className="flex items-center">
-                              <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-principal)'}}></div>Principal (with consolidation)</span>
-                              <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(principalWithConsolidation)}</span>
-                          </div>
-                          <div className="flex items-center pl-[14px]">
-                              <span className="text-[var(--text-color-muted)]">Principal (without consolidation)</span>
-                              <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(principalWithoutConsolidation)}</span>
-                          </div>
-                      </>
-                  ) : otherDebtsPrincipal > 0 ? (
-                    <>
-                        <div className="flex items-center">
-                            <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-principal)'}}></div>Home Loan Principal</span>
-                            <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(homeLoanPrincipal)}</span>
-                        </div>
-                        <div className="flex items-center pl-[14px]">
-                            <span className="text-[var(--text-color-muted)]">Other Debts Principal</span>
-                            <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(otherDebtsPrincipal)}</span>
-                        </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center">
-                        <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-principal)'}}></div>Principal</span>
-                        <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(homeLoanPrincipal)}</span>
-                    </div>
-                  )}
-                  
-                  {showInterestAmount ? (
-                      <>
-                          {homeLoanInterest > 0 && (
-                              <div className="flex items-center pl-3.5">
-                                  <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-interest)'}}></div>Home Loan Int.</span>
-                                  <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(homeLoanInterest)}</span>
-                              </div>
-                          )}
-                          {otherDebtsInterest > 0 && (
-                              <div className="flex items-center pl-3.5">
-                                  <span className="text-[var(--text-color-muted)] flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{backgroundColor: 'var(--chart-color-interest)'}}></div>Other Debts Int.</span>
-                                  <span className="font-semibold text-[var(--text-color)] ml-auto">{formatCurrency(otherDebtsInterest)}</span>
-                              </div>
-                          )}
-                      </>
-                  ) : (
-                      null
-                  )}
               </div>
-              )}
           </div>
       );
   };
   
-  const monthTicks = Array.from({ length: 13 }, (_, i) => i);
+  if (!isCrownLoanValid) {
+    return (
+      <Card>
+        <div className="text-center text-yellow-400 p-4 bg-yellow-900/50 rounded-lg">
+            <p className="font-bold text-lg">Unable to calculate Crown Money scenario.</p>
+            <p>Monthly expenses exceed monthly income. Please review the budget on the 'Income & Expenses' tab.</p>
+        </div>
+      </Card>
+    );
+  }
 
-  const accordionItems = [
+  const formatYears = (value: number) => {
+    if (!isFinite(value)) return 'N/A';
+    return `${value.toFixed(2)}`; // Use 2 decimals here as per original design for section 4 large numbers, or change if needed. User asked for 1 max.
+  }
+  
+  // Actually, user requested "at most one decimal point".
+  const formatYearsStrict = (value: number) => {
+    if (!isFinite(value)) return 'N/A';
+    return `${value.toFixed(1)}`;
+  }
+
+  return (
+    <div className="animate-fade-in space-y-6">
+      <Accordion items={[
       {
           title: "1. Setup & \"What If\" Scenario",
           content: (
             <div className="space-y-6">
                  <div className="w-full md:w-3/4 mx-auto">
-                    <SliderInput label={<SliderLabel />} value={appState.crownMoneyInterestRate} onChange={handleRateChange} min={1} max={15} step={0.05} unit="%" />
+                    <SliderInput 
+                        label={<div className='flex items-center justify-center gap-2'><span className='text-sm font-medium'>Crown Money Interest Rate</span></div>} 
+                        value={appState.crownMoneyInterestRate} 
+                        onChange={(v) => setAppState(prev => ({ ...prev, crownMoneyInterestRate: v }))} 
+                        min={1} max={15} step={0.05} unit="%" 
+                    />
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center mb-4">
-                    <div className="p-2 bg-black/10 dark:bg-white/5 rounded-lg">
-                        <h4 className="text-xs text-[var(--color-positive-text)]">Total Monthly Income</h4>
-                        <p className="text-lg font-bold">{formatCurrency(totalMonthlyIncome)}</p>
-                    </div>
-                    <div className="p-2 bg-black/10 dark:bg-white/5 rounded-lg">
-                        <h4 className="text-xs text-[var(--color-negative-text)]">Total Monthly Expenses</h4>
-                        <p className="text-lg font-bold">{formatCurrency(totalMonthlyExpenses)}</p>
-                    </div>
-                    <div className="p-2 bg-black/10 dark:bg-white/5 rounded-lg">
-                        <h4 className="text-xs text-[var(--color-surplus-text)]">Current Surplus</h4>
-                        <p className="text-lg font-bold">{formatCurrency(surplusForDebtReduction)}</p>
-                    </div>
-                </div>
-                <p className="text-xs text-center text-[var(--text-color-muted)] -mt-2 italic print:hidden">*Surplus is calculated as Total Monthly Income minus Total Monthly Living Expenses from the budget tab.</p>
-                <hr className="border-[var(--border-color)] border-dashed my-4" />
                 <SliderInput 
-                    label={
-                        <div className="flex items-center gap-1">
-                            <span>Simulate Additional Monthly Income</span>
-                            <Tooltip text="Use this slider to see how extra income (e.g., from a pay rise or side hustle) would accelerate your Crown Money payoff time. All charts will update instantly.">
-                                <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-                            </Tooltip>
-                        </div>
-                    }
+                    label="Simulate Additional Monthly Income"
                     value={additionalMonthlyIncome}
                     onChange={setAdditionalMonthlyIncome}
-                    min={0}
-                    max={5000}
-                    step={50}
-                    unit="$"
+                    min={0} max={5000} step={50} unit="$"
                 />
-                <div className="mt-4 text-center p-3 rounded-lg border" style={{ backgroundColor: 'var(--color-surplus-bg)', borderColor: 'var(--color-surplus-text)' }}>
-                    <span className="font-bold" style={{ color: 'var(--color-surplus-text)' }}>Adjusted Surplus for Crown Plan: </span>
-                    <span className="font-bold text-lg" style={{ color: 'var(--color-surplus-text)' }}>
-                        {formatCurrency(surplusForDebtReduction + additionalMonthlyIncome)}
-                    </span>
-                </div>
             </div>
           )
       },
@@ -653,78 +392,38 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
           title: "2. Total Debt Trajectory",
           content: (
             <>
-                {isBankLoanValid && isCrownLoanValid ? (
-                  <>
-                    <p className="text-sm text-[var(--text-color-muted)] mb-4">
-                        This chart shows the Bank's **home loan** trajectory vs. Crown Money's **total consolidated debt** trajectory, illustrating the impact of consolidation and accelerated repayment.
-                    </p>
-                    <div className="w-full h-[500px]">
-                        <ResponsiveContainer minWidth={0} minHeight={0}>
-                            <ComposedChart data={loanBalanceChartData} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                                <XAxis dataKey="year" type="number" domain={[0, 'dataMax']} ticks={xTicks} stroke="var(--text-color)" tick={{ fontSize: 12 }} label={{ value: 'Years', position: 'insideBottom', offset: -10, fill: 'var(--text-color-muted)' }} />
-                                <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} tick={{ fontSize: 12 }} domain={[0, yAxisMax]} />
-                                <RechartsTooltip content={<CustomAreaTooltip formatter={formatChartCurrency} />} />
-                                <Legend wrapperStyle={{fontSize: "14px", color: "var(--text-color-muted)"}} verticalAlign="top" />
-                                <defs>
-                                    <linearGradient id="colorBank" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--chart-color-bank)" stopOpacity={0.7}/><stop offset="95%" stopColor="var(--chart-color-bank)" stopOpacity={0}/></linearGradient>
-                                    <linearGradient id="colorCrown" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--chart-color-crown)" stopOpacity={0.7}/><stop offset="95%" stopColor="var(--chart-color-crown)" stopOpacity={0}/></linearGradient>
-                                </defs>
-                                {isCrownLoanValid && isBankLoanValid && bankLoanCalculation.termInYears > crownMoneyLoanCalculation.termInYears && isFinite(bankLoanCalculation.termInYears) && isFinite(crownMoneyLoanCalculation.termInYears) && (
-                                    <ReferenceArea
-                                        x1={crownMoneyLoanCalculation.termInYears}
-                                        x2={bankLoanCalculation.termInYears}
-                                        y1={0}
-                                        y2={yAxisMax}
-                                        stroke="var(--chart-color-wealth)"
-                                        strokeOpacity={0.3}
-                                        fill="var(--chart-color-wealth)"
-                                        fillOpacity={0.1}
-                                        ifOverflow="extendDomain"
-                                    >
-                                        <Label value="Savings & Investment Period" angle={90} position="insideTopLeft" fill="var(--chart-color-wealth)" offset={20} />
-                                    </ReferenceArea>
-                                )}
-                                
-                                <Area type="linear" dataKey="Bank" name="Bank (Home Loan Only)" stroke="none" fillOpacity={1} fill="url(#colorBank)" legendType="none" />
-                                <Line type="linear" name="Bank (Home Loan Only)" dataKey="Bank" stroke="var(--chart-color-bank)" strokeWidth={2} dot={false} />
-
-                                <Area type="linear" dataKey="Crown Money" name="Crown Money (Total Debt)" stroke="none" fillOpacity={1} fill="url(#colorCrown)" legendType="none" />
-                                <Line type="linear" name="Crown Money (Total Debt)" dataKey="Crown Money" stroke="var(--chart-color-crown)" strokeWidth={3} dot={false} />
-                            </ComposedChart>
-                        </ResponsiveContainer>
-                    </div>
-                    <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*This chart tracks the remaining debt over time for both scenarios.</p>
-                  </>
-                ) : <p className="text-center text-[var(--text-color-muted)]">Data not available.</p>}
-              </>
-          )
-      },
-      {
-          title: "3. First 12 Months: Debt Reduction Trajectory",
-          content: (
-            <>
                 <p className="text-sm text-[var(--text-color-muted)] mb-4">
-                    This chart zooms in on the crucial first year, showing the rapid debt reduction achieved by the Crown Money strategy compared to a standard bank loan from day one.
+                    This chart shows the Bank's **home loan** trajectory vs. Crown Money's **total consolidated debt** trajectory.
                 </p>
-                <div className="w-full h-[400px]">
-                    <ResponsiveContainer minWidth={0} minHeight={0}>
-                        <AreaChart data={first12MonthsData} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
-                            <defs>
-                                <linearGradient id="colorBank12m" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--chart-color-bank)" stopOpacity={0.7}/><stop offset="95%" stopColor="var(--chart-color-bank)" stopOpacity={0}/></linearGradient>
-                                <linearGradient id="colorCrown12m" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--chart-color-crown)" stopOpacity={0.7}/><stop offset="95%" stopColor="var(--chart-color-crown)" stopOpacity={0}/></linearGradient>
-                            </defs>
+                <div style={{ width: '100%', height: 500 }}>
+                    <ResponsiveContainer minWidth={0} minHeight={0} width="100%" height="100%">
+                        <ComposedChart data={loanBalanceChartData} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                            <XAxis dataKey="month" type="number" domain={[0, 12]} ticks={monthTicks} interval={0} stroke="var(--text-color)" tick={{ fontSize: 12 }} label={{ value: 'Months', position: 'insideBottom', offset: -10, fill: 'var(--text-color-muted)' }} />
-                            <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} tick={{ fontSize: 12 }} domain={['dataMin - 1000', 'dataMax + 1000']} allowDataOverflow />
-                            <RechartsTooltip content={<CustomMonthlyTooltip formatter={formatCurrency} />} />
+                            <XAxis dataKey="year" type="number" stroke="var(--text-color)" tick={{ fontSize: 12 }} />
+                            <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} tick={{ fontSize: 12 }} />
+                            <RechartsTooltip content={<CustomAreaTooltip formatter={formatChartCurrency} />} />
                             <Legend wrapperStyle={{fontSize: "14px", color: "var(--text-color-muted)"}} verticalAlign="top" />
-                            <Area type="monotone" name="Bank (Home Loan Only)" dataKey="Bank" stroke="var(--chart-color-bank)" fill="url(#colorBank12m)" strokeWidth={2} dot={true} />
-                            <Area type="monotone" name="Crown Money (Total Debt)" dataKey="Crown Money" stroke="var(--chart-color-crown)" fill="url(#colorCrown12m)" strokeWidth={3} dot={true} />
-                        </AreaChart>
+                            {isCrownLoanValid && isBankLoanValid && bankLoanCalculation.termInYears > crownMoneyLoanCalculation.termInYears && (
+                                <ReferenceArea
+                                    x1={crownMoneyLoanCalculation.termInYears}
+                                    x2={bankLoanCalculation.termInYears}
+                                    y1={0}
+                                    stroke="var(--chart-color-wealth)"
+                                    strokeOpacity={0.3}
+                                    fill="var(--chart-color-wealth)"
+                                    fillOpacity={0.1}
+                                    ifOverflow="extendDomain"
+                                >
+                                    <Label value="Savings & Investment Period" angle={90} position="insideTopLeft" fill="var(--chart-color-wealth)" offset={20} />
+                                </ReferenceArea>
+                            )}
+                            <Area type="linear" dataKey="Bank" stroke="none" fill="var(--chart-color-bank)" fillOpacity={0.2} />
+                            <Line type="linear" dataKey="Bank" stroke="var(--chart-color-bank)" strokeWidth={2} dot={false} />
+                            <Area type="linear" dataKey="Crown Money" stroke="none" fill="var(--chart-color-crown)" fillOpacity={0.2} />
+                            <Line type="linear" dataKey="Crown Money" stroke="var(--chart-color-crown)" strokeWidth={3} dot={false} />
+                        </ComposedChart>
                     </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Chart shows remaining loan balance at the end of each month.</p>
             </>
           )
       },
@@ -736,47 +435,46 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
                   <div className="space-y-6">
                       <div className="text-center">
                           <p className="text-lg text-[var(--text-color-muted)]">Total Interest Saved:</p>
-                          <p className="text-5xl font-extrabold my-2 animate-pulse" style={{color: 'var(--chart-color-crown)'}}>{formatCurrency(totalInterestSaved)}</p>
-                          <div className="text-sm text-center text-[var(--text-color-muted)] mt-2">
-                            {primaryInterestSaved > 0 && <p>Primary Loan Savings: <span className="font-semibold text-[var(--color-positive-text)]">{formatCurrency(primaryInterestSaved)}</span></p>}
-                            {otherDebtsInterestSaved > 0 && <p>Other Debts Savings: <span className="font-semibold text-[var(--color-positive-text)]">{formatCurrency(otherDebtsInterestSaved)}</span></p>}
-                          </div>
+                          <p className="text-5xl font-extrabold my-2 animate-pulse" style={{color: 'var(--chart-color-wealth)'}}>{formatCurrency(totalInterestSaved)}</p>
+                          <p className="text-sm font-semibold text-green-600">Primary Loan Savings: {formatCurrency(totalInterestSaved)}</p>
+
                           <p className="text-lg text-[var(--text-color-muted)] mt-4">Years saved:</p>
-                          <p className="text-5xl font-extrabold my-2" style={{color: 'var(--chart-color-crown)'}}>{(bankLoanCalculation.termInYears - crownMoneyLoanCalculation.termInYears).toFixed(2)}</p>
+                          <p className="text-5xl font-extrabold my-2" style={{color: 'var(--chart-color-wealth)'}}>{(bankLoanCalculation.termInYears - crownMoneyLoanCalculation.termInYears).toFixed(1)}</p>
                       </div>
-                      <p className="text-xs text-center text-[var(--text-color-muted)] mt-2 italic print:hidden">*Interest Saved is the difference between the total interest paid in the Bank scenario and the Crown Money scenario.</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                          <div>
-                              <h4 className="text-center text-[var(--text-color-muted)] mb-2">Payoff Time Comparison (Years)</h4>
-                              <div style={{ width: '100%', height: 250 }}>
-                                <ResponsiveContainer minWidth={0} minHeight={0}>
-                                    <BarChart data={yearsChartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)"/>
-                                        <XAxis type="category" dataKey="name" hide={true} />
-                                        <YAxis stroke="var(--text-color)" domain={[0, 'dataMax + 5']} tickFormatter={(tick) => tick.toFixed(0)} label={{ value: 'Years', angle: -90, position: 'insideLeft', fill: 'var(--text-color-muted)' }} />
-                                        <RechartsTooltip content={<CustomBarTooltip formatter={(value: number) => `${value.toFixed(2)} years`} unit="years" />} cursor={{fill: 'var(--card-bg-color)'}} />
-                                        <Legend verticalAlign="top" wrapperStyle={{color: "var(--text-color-muted)"}} />
-                                        <Bar dataKey="Bank" fill="var(--chart-color-bank)" barSize={60} />
-                                        <Bar dataKey="Crown Money" fill="var(--chart-color-crown)" barSize={60} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+
+                      <p className="text-xs text-center text-[var(--text-color-muted)] italic">
+                          *Interest Saved is the difference between the total interest paid in the Bank scenario and the Crown Money scenario.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+                          {/* Payoff Time Chart */}
+                          <div style={{ height: 300 }}>
+                              <h4 className="text-center font-semibold text-[var(--text-color-muted)] mb-4">Payoff Time Comparison (Years)</h4>
+                              <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={snapshotChartsData.payoff} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                                      <YAxis stroke="var(--text-color)" tick={{ fontSize: 12 }} label={{ value: 'Years', angle: -90, position: 'insideLeft', style: { fill: 'var(--text-color-muted)', textAnchor: 'middle' }, offset: 10 }} />
+                                      <RechartsTooltip cursor={{fill: 'transparent'}} content={<CustomSnapshotTooltip type="years" />} />
+                                      <Legend iconType="square" wrapperStyle={{ paddingTop: '10px' }} />
+                                      <Bar dataKey="Bank" fill="var(--chart-color-bank)" barSize={40} />
+                                      <Bar dataKey="Crown Money" fill="var(--chart-color-crown)" barSize={40} />
+                                  </BarChart>
+                              </ResponsiveContainer>
                           </div>
-                          <div>
-                              <h4 className="text-center text-[var(--text-color-muted)] mb-2">Total Interest Comparison ($)</h4>
-                              <div style={{ width: '100%', height: 250 }}>
-                                <ResponsiveContainer minWidth={0} minHeight={0}>
-                                    <BarChart data={interestChartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)"/>
-                                        <XAxis type="category" dataKey="name" hide={true} />
-                                        <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} label={{ value: '$', angle: -90, position: 'insideLeft', fill: 'var(--text-color-muted)' }} />
-                                        <RechartsTooltip content={<CustomBarTooltip formatter={(value: number) => formatCurrency(value)} unit="currency" />} cursor={{fill: 'var(--card-bg-color)'}}/>
-                                        <Legend verticalAlign="top" wrapperStyle={{color: "var(--text-color-muted)"}}/>
-                                        <Bar dataKey="Bank" fill="var(--chart-color-bank)" barSize={60} />
-                                        <Bar dataKey="Crown Money" fill="var(--chart-color-crown)" barSize={60} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+
+                          {/* Interest Comparison Chart */}
+                          <div style={{ height: 300 }}>
+                              <h4 className="text-center font-semibold text-[var(--text-color-muted)] mb-4">Total Interest Comparison ($)</h4>
+                              <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={snapshotChartsData.interest} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                                      <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} tick={{ fontSize: 12 }} label={{ value: '$', angle: -90, position: 'insideLeft', style: { fill: 'var(--text-color-muted)', textAnchor: 'middle' }, offset: 0 }} />
+                                      <RechartsTooltip cursor={{fill: 'transparent'}} content={<CustomSnapshotTooltip type="currency" />} />
+                                      <Legend iconType="square" wrapperStyle={{ paddingTop: '10px' }} />
+                                      <Bar dataKey="Bank" fill="var(--chart-color-bank)" barSize={40} />
+                                      <Bar dataKey="Crown Money" fill="var(--chart-color-crown)" barSize={40} />
+                                  </BarChart>
+                              </ResponsiveContainer>
                           </div>
                       </div>
                   </div>
@@ -794,10 +492,8 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
                         <DonutChartCard 
                             title="Bank" 
                             homeLoanPrincipal={bankYear1.principal}
-                            otherDebtsPrincipal={0}
                             homeLoanInterest={bankYear1.homeLoanInterest} 
                             otherDebtsInterest={0} 
-                            showInterestAmount={false} 
                             displayMode="largePrincipal"
                         />
                         <DonutChartCard 
@@ -805,14 +501,10 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
                             homeLoanPrincipal={crownYear1.principal} 
                             homeLoanInterest={crownYear1.homeLoanInterest} 
                             otherDebtsInterest={crownYear1.otherDebtsInterest} 
-                            showInterestAmount={false} 
-                            principalWithConsolidation={appState.otherDebts.length > 0 ? crownYear1.principal : undefined}
-                            principalWithoutConsolidation={appState.otherDebts.length > 0 ? calculations.crownMoneyLoanCalculation.year1PrimaryOnlyPrincipalPaid : undefined}
                             displayMode="largePrincipal"
                         />
                     </div>
                 </div>
-                <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Charts show interest as a percentage of total payments made in the first 12 months.</p>
             </div>
           )
       },
@@ -828,88 +520,110 @@ const Tab4_OODC: React.FC<Props> = ({ appState, setAppState, calculations }) => 
                             homeLoanPrincipal={bankLifetime.principal}
                             homeLoanInterest={bankLifetime.homeLoanInterest} 
                             otherDebtsInterest={bankLifetime.otherDebtsInterest} 
-                            usePrincipalAsDenominator={true} 
                         />
                         <DonutChartCard 
                             title="Crown Money 🏆" 
                             homeLoanPrincipal={crownLifetime.principal}
                             homeLoanInterest={crownLifetime.homeLoanInterest} 
                             otherDebtsInterest={crownLifetime.otherDebtsInterest} 
-                            usePrincipalAsDenominator={true} 
                         />
                     </div>
                 </div>
-                <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Charts show total interest paid over the life of the loan as a percentage of the total principal borrowed.</p>
             </div>
           )
       },
       {
           title: "7. Detailed Comparison Table",
           content: (
-            <>
-              {isCrownLoanValid ? (
-                  <div className="space-y-4">
-                      <div>
-                        <div className='flex items-center justify-center gap-2 mb-2'>
-                          <h4 className="text-center font-semibold text-base text-[var(--text-color-muted)]">Loan Payoff Time</h4>
-                          <Tooltip text="The total time it will take to pay off the loan completely. The Crown Money strategy uses your budget surplus to make extra repayments and reduce this time.">
-                              <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-                          </Tooltip>
+            <div className="space-y-8 px-2 py-2">
+                {/* Loan Payoff Time */}
+                <div>
+                     <div className="flex justify-center items-center gap-2 mb-6">
+                        <h4 className="font-semibold text-[var(--text-color-muted)] text-lg">Loan Payoff Time</h4>
+                         <Tooltip text="The estimated time to become completely debt free on your home loan (and any consolidated debts for Crown).">
+                            <InfoIcon className="h-5 w-5 text-[var(--text-color-muted)]"/>
+                        </Tooltip>
+                     </div>
+                     <div className="flex justify-between items-center px-2 sm:px-12">
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-[var(--text-color-muted)] tracking-wider mb-2">BANK</p>
+                            <p className="text-4xl sm:text-5xl font-extrabold text-[var(--text-color)]">{formatYearsStrict(bankLoanCalculation.termInYears)}</p>
+                            <p className="text-sm font-medium text-[var(--text-color-muted)] mt-1">Years</p>
                         </div>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="text-center p-3 rounded-lg"><p className="text-xs font-medium text-[var(--chart-color-bank)]">BANK</p><p className="text-3xl font-bold text-[var(--text-color)]">{isBankLoanValid ? bankLoanCalculation.termInYears.toFixed(2) : 'N/A'}</p><p className="text-sm text-[var(--text-color-muted)]">Years</p></div>
-                              <div className="text-center p-3 rounded-lg bg-[var(--chart-color-crown)]/10"><p className="text-xs font-medium text-[var(--chart-color-crown)]">CROWN MONEY 🏆</p><p className="text-3xl font-bold text-[var(--chart-color-crown)]">{isCrownLoanValid ? crownMoneyLoanCalculation.termInYears.toFixed(2) : 'N/A'}</p><p className="text-sm text-[var(--text-color-muted)]">Years</p></div>
-                          </div>
-                      </div>
-                      <hr className="border-[var(--border-color)]" />
-                      <div>
-                          <h4 className="text-center font-semibold text-base text-[var(--text-color-muted)] mb-2">Debt Free By Age</h4>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="text-center space-y-1 p-3 rounded-lg"><p className="text-xs font-medium text-[var(--chart-color-bank)] mb-1">BANK</p>{appState.people.map(p => (<p key={p.id} className="text-lg font-bold text-[var(--text-color)]">{p.name}: {bankDebtFreeAges[p.id]}</p>))}</div>
-                              <div className="text-center space-y-1 p-3 rounded-lg bg-[var(--chart-color-crown)]/10"><p className="text-xs font-medium text-[var(--chart-color-crown)] mb-1">CROWN MONEY 🏆</p>{appState.people.map(p => (<p key={p.id} className="text-lg font-bold text-[var(--chart-color-crown)]">{p.name}: {crownDebtFreeAges[p.id]}</p>))}</div>
-                          </div>
-                      </div>
-                      <hr className="border-[var(--border-color)]" />
-                      <div>
-                         <div className='flex items-center justify-center gap-2 mb-2'><h4 className="text-center font-semibold text-base text-[var(--text-color-muted)]">Interest Paid Breakdown</h4><Tooltip text="The total interest you will pay over the entire life of the loan. A lower number means more of your money stays in your pocket."><InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/></Tooltip></div>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="text-center p-3 rounded-lg space-y-2"><p className="text-xs font-medium text-[var(--chart-color-bank)] mb-1">BANK</p>
-                                <p className="text-xs">Home Loan:</p><p className="text-lg font-bold">{isBankLoanValid ? formatCurrency(bankLoanCalculation.totalInterest) : 'N/A'}</p>
-                              </div>
-                              <div className="text-center p-3 rounded-lg bg-[var(--chart-color-crown)]/10 space-y-2"><p className="text-xs font-medium text-[var(--chart-color-crown)] mb-1">CROWN MONEY 🏆</p>
-                                <p className="text-xs">Total Consolidated Debt:</p><p className="text-lg font-bold text-[var(--chart-color-crown)]">{isCrownLoanValid ? formatCurrency(crownMoneyLoanCalculation.totalInterest) : 'N/A'}</p>
-                              </div>
-                          </div>
-                      </div>
-                      <hr className="border-[var(--border-color)] border-dashed" />
-                      <div>
-                          <div className="grid grid-cols-2 gap-4 mt-2">
-                               <div className="text-center p-3 rounded-lg border border-[var(--border-color)]"><p className="text-sm font-semibold text-[var(--text-color-muted)] mb-1">TOTAL INTEREST (BANK)</p><p className="text-2xl font-bold text-[var(--text-color)]">{isBankLoanValid ? formatCurrency(bankLoanCalculation.totalInterest) : 'N/A'}</p></div>
-                              <div className="text-center p-3 rounded-lg bg-[var(--chart-color-crown)]/10 border border-[var(--chart-color-crown)]"><p className="text-sm font-semibold text-[var(--chart-color-crown)] mb-1">TOTAL INTEREST (CROWN) 🏆</p><p className="text-2xl font-bold text-[var(--chart-color-crown)]">{isCrownLoanValid ? formatCurrency(crownMoneyLoanCalculation.totalInterest) : 'N/A'}</p></div>
-                          </div>
-                      </div>
-                  </div>
-              ) : <p className="text-center text-[var(--text-color-muted)]">Data not available.</p>}
-            </>
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-[var(--title-color)] tracking-wider mb-2">CROWN MONEY 🏆</p>
+                            <p className="text-4xl sm:text-5xl font-extrabold text-[var(--title-color)]">{formatYearsStrict(crownMoneyLoanCalculation.termInYears)}</p>
+                            <p className="text-sm font-medium text-[var(--text-color-muted)] mt-1">Years</p>
+                        </div>
+                     </div>
+                </div>
+
+                <hr className="border-[var(--border-color)] border-dashed" />
+
+                {/* Debt Free By Age */}
+                <div>
+                     <h4 className="font-semibold text-[var(--text-color-muted)] text-center text-lg mb-6">Debt Free By Age</h4>
+                     <div className="flex justify-between items-start px-2 sm:px-12">
+                        <div className="text-center space-y-3">
+                            <p className="text-xs font-bold text-[var(--text-color-muted)] tracking-wider mb-2">BANK</p>
+                            {people.map((p: any) => (
+                                <div key={p.id} className="text-base sm:text-lg font-bold text-[var(--text-color)]">
+                                    {p.name}: <span className="ml-1">{isBankLoanValid ? Math.ceil(p.age + bankLoanCalculation.termInYears) : 'N/A'}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="text-center space-y-3">
+                            <p className="text-xs font-bold text-[var(--title-color)] tracking-wider mb-2">CROWN MONEY 🏆</p>
+                             {people.map((p: any) => (
+                                <div key={p.id} className="text-base sm:text-lg font-bold text-[var(--title-color)]">
+                                    {p.name}: <span className="ml-1">{isCrownLoanValid ? Math.ceil(p.age + crownMoneyLoanCalculation.termInYears) : 'N/A'}</span>
+                                </div>
+                            ))}
+                        </div>
+                     </div>
+                </div>
+
+                <hr className="border-[var(--border-color)] border-dashed" />
+
+                {/* Interest Paid Breakdown */}
+                <div>
+                     <div className="flex justify-center items-center gap-2 mb-6">
+                        <h4 className="font-semibold text-[var(--text-color-muted)] text-lg">Interest Paid Breakdown</h4>
+                         <Tooltip text="Total interest paid over the life of the loan. Crown Money includes interest on consolidated debts.">
+                            <InfoIcon className="h-5 w-5 text-[var(--text-color-muted)]"/>
+                        </Tooltip>
+                     </div>
+                     <div className="flex justify-between items-center px-2 sm:px-12 mb-8">
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-[var(--text-color-muted)] tracking-wider mb-2">BANK</p>
+                            <p className="text-sm text-[var(--text-color-muted)] mb-1">Home Loan:</p>
+                            <p className="text-2xl sm:text-3xl font-bold text-[var(--text-color)]">{formatCurrency(bankLoanCalculation.totalInterest)}</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-[var(--title-color)] tracking-wider mb-2">CROWN MONEY 🏆</p>
+                            <p className="text-sm text-[var(--text-color-muted)] mb-1">Total Consolidated Debt:</p>
+                            <p className="text-2xl sm:text-3xl font-bold text-[var(--title-color)]">{formatCurrency(crownMoneyLoanCalculation.totalInterest)}</p>
+                        </div>
+                     </div>
+                     
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="p-6 rounded-xl border border-[var(--border-color)] bg-white dark:bg-white/5 text-center shadow-sm">
+                             <p className="text-xs font-bold text-[var(--text-color-muted)] uppercase tracking-wider mb-2">TOTAL INTEREST (BANK)</p>
+                             <p className="text-3xl font-black text-[var(--text-color)]">{formatCurrency(bankLoanCalculation.totalInterest)}</p>
+                        </div>
+                        <div className="p-6 rounded-xl border border-[var(--title-color)] bg-[var(--title-color)]/5 text-center shadow-sm relative overflow-hidden">
+                             <div className="absolute top-2 right-2 animate-bounce">
+                                <span className="text-lg">🏆</span>
+                             </div>
+                             <p className="text-xs font-bold text-[var(--title-color)] uppercase tracking-wider mb-2">TOTAL INTEREST (CROWN)</p>
+                             <p className="text-3xl font-black text-[var(--title-color)]">{formatCurrency(crownMoneyLoanCalculation.totalInterest)}</p>
+                        </div>
+                     </div>
+                </div>
+            </div>
           )
       },
-  ];
-
-  if (!isCrownLoanValid) {
-    return (
-      <Card>
-        <div className="text-center text-yellow-400 p-4 bg-yellow-900/50 rounded-lg">
-            <p className="font-bold text-lg">Unable to calculate Crown Money scenario.</p>
-            <p>Monthly expenses exceed monthly income. Please review the budget on the 'Income & Expenses' tab.</p>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="animate-fade-in space-y-6">
-      <FutureEventsImpactSummary appState={appState} calculations={calculations} />
-      <Accordion items={accordionItems} />
+      ]} />
     </div>
   );
 };
