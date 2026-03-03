@@ -1,9 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Out of Debt Calculator</title>
+    <title>Out of Debt Calculator | Crown Money</title>
+    <link rel="icon" type="image/png" href="https://storage.googleapis.com/crown_money/Logo%20%26%20Icon/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -71,6 +73,17 @@
       .animate-fade-in-up {
           animation: fadeInUp 0.3s ease-out forwards;
       }
+      
+      .trust-logo {
+        filter: grayscale(100%);
+        opacity: 0.6;
+        transition: all 0.3s ease;
+      }
+      .trust-logo:hover {
+        filter: grayscale(0%);
+        opacity: 1;
+        transform: scale(1.05);
+      }
     </style>
   <script type="importmap">
 {
@@ -83,6 +96,7 @@
   }
 }
 </script>
+<link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="root"></div>

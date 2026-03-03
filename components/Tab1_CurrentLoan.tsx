@@ -329,9 +329,9 @@ const Tab1_CurrentLoan: React.FC<Props> = ({ appState, setAppState, calculations
             <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="p-4 bg-black/10 dark:bg-white/5 rounded-lg flex flex-col justify-center items-center">
                     <BanknotesIcon className="h-8 w-8 mb-2 text-[var(--chart-color-bank)]"/>
-                    <h4 className="text-sm text-[var(--text-color-muted)]">Monthly Interest</h4>
+                    <h4 className="text-sm text-[var(--text-color-muted)]">Total Interest</h4>
                     <p className="text-xl font-bold text-[var(--text-color)]">
-                        {formatCurrency(netLoanAmount * (loan.interestRate / 100 / 12))}
+                        {formatCurrency(bankLoanCalculation.totalInterest)}
                     </p>
                 </div>
                 <div className="p-4 bg-black/10 dark:bg-white/5 rounded-lg flex flex-col justify-center items-center">

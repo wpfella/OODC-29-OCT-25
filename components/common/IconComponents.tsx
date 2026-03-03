@@ -1,35 +1,17 @@
 
 import React from 'react';
 
-export const CrownLogo = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox="0 0 450 100"
-    xmlns="http://www.w3.org/2000/svg"
+export const CrownLogo = (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+  <img
+    src="https://storage.googleapis.com/crown_money/Logo%20%26%20Icon/header-logo.svg"
+    alt="Crown Money Logo"
     {...props}
-    aria-label="Crown Money"
-  >
-    <text
-      x="0"
-      y="40"
-      fontFamily="sans-serif"
-      fontSize="48"
-      fontWeight="700"
-      letterSpacing="10"
-      fill="currentColor"
-    >
-      CROWN
-    </text>
-    <text
-      x="0"
-      y="90"
-      fontFamily="sans-serif"
-      fontSize="48"
-      fontWeight="700"
-      letterSpacing="10"
-      fill="currentColor"
-    >
-      MONEY
-    </text>
+  />
+);
+
+export const ArrowPathIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
   </svg>
 );
 
@@ -245,7 +227,7 @@ export const EmailIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const FacebookIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-        <path d="M12 2.04c-5.52 0-10 4.48-10 10s4.48 10 10 10 10-4.48 10-10-4.48-10-10-10zm2.25 10.5h-1.5v5.5h-2.5v-5.5h-1.25v-2h1.25v-1.16c0-1.09.52-2.84 2.84-2.84h1.66v2h-1c-.18 0-.42.09-.42.46v1.54h1.42l-.25 2z"/>
+        <path d="M12 2.04c-5.52 0-10 4.48-10 10s4.48 10 10 10 10 10 10-10-4.48-10-10-10zm2.25 10.5h-1.5v5.5h-2.5v-5.5h-1.25v-2h1.25v-1.16c0-1.09.52-2.84 2.84-2.84h1.66v2h-1c-.18 0-.42.09-.42.46v1.54h1.42l-.25 2z"/>
     </svg>
 );
 

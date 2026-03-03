@@ -37,13 +37,10 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
 
   const handleLoanChange = (field: keyof typeof loan, value: any) => {
     let updates: Partial<typeof loan> = { [field]: value };
-
-    // Synchronous safety check for Repayment when changing Interest Rate
     if (field === 'interestRate') {
         const netLoan = Math.max(0, loan.amount - (loan.offsetBalance || 0));
         if (netLoan > 0) {
             const minRepayment = calculateIOPayment(netLoan, value, loan.frequency);
-            
             if (loan.repayment < minRepayment) {
                 const adjustedRepayment = Math.ceil(minRepayment);
                 updates.repayment = adjustedRepayment;
@@ -51,7 +48,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
             }
         }
     }
-    
     setAppState(prev => ({ ...prev, loan: { ...prev.loan, ...updates } }));
   };
 
@@ -68,7 +64,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
 
   const processAmortizationSchedule = (schedule: any[]) => {
     if (!schedule || schedule.length === 0) return [];
-
     const yearlyData: { [year: number]: { Interest: number, Principal: number } } = {};
     schedule.forEach((d: any) => {
         const year = Math.ceil(d.month / 12);
@@ -78,7 +73,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
         yearlyData[year].Interest += d.interestPaid;
         yearlyData[year].Principal += d.principalPaid;
     });
-
     return Object.keys(yearlyData).map(yearStr => {
         const year = parseInt(yearStr, 10);
         return {
@@ -95,11 +89,27 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
   ];
   const firstYearPieColors = ['var(--chart-color-interest)', 'var(--chart-color-principal)'];
 
-
   const annualBankChartData = React.useMemo(() => {
     if (bankLoanCalculation.termInYears === Infinity) return [];
     return processAmortizationSchedule(bankLoanCalculation.amortizationSchedule);
   }, [bankLoanCalculation.amortizationSchedule, bankLoanCalculation.termInYears]);
+
+  const interestAsPercentageOfPrincipal = netLoanAmount > 0 ? (bankLoanCalculation.totalInterest / netLoanAmount) * 100 : 0;
+
+  // Move the early return check HERE, after all hooks are declared.
+  if (bankLoanCalculation.termInYears === Infinity) {
+    return (
+        <div className="animate-fade-in">
+            <Card>
+                <div className="text-center text-yellow-400 p-4">
+                    <p className="font-bold text-lg">Unable to calculate breakdown.</p>
+                    <p>Repayments are not high enough to cover the interest on the loan.</p>
+                    <p className="text-sm mt-2 text-black/70">Adjust Repayments or Interest Rate in the Current Loan tab.</p>
+                </div>
+            </Card>
+        </div>
+    );
+  }
   
   const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -140,8 +150,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
     return null;
   };
 
-  const interestAsPercentageOfPrincipal = netLoanAmount > 0 ? (bankLoanCalculation.totalInterest / netLoanAmount) * 100 : 0;
-  
   const accordionItems = [
     {
       title: "1. Loan & First Year Cost Breakdown",
@@ -174,15 +182,7 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
                     </div>
                 </div>
                 <div className="mt-6">
-                    <SliderInput 
-                        label="Interest Rate" 
-                        value={loan.interestRate} 
-                        onChange={val => handleLoanChange('interestRate', val)} 
-                        min={1} 
-                        max={15} 
-                        step={0.05} 
-                        unit="%" 
-                    />
+                    <SliderInput label="Interest Rate" value={loan.interestRate} onChange={val => handleLoanChange('interestRate', val)} min={1} max={15} step={0.05} unit="%" />
                 </div>
             </div>
             <hr className="my-6 border-[var(--border-color)] border-dashed" />
@@ -210,7 +210,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
                     <p className="text-lg sm:text-xl font-bold text-[var(--text-color)] print:text-black">{formatCurrency(weeklyInterestPaid)}</p>
                 </div>
             </div>
-            <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Calculated using the first 12 months of the loan amortization schedule. Annual Debt Reduction = Total Annual Repayments - Annual Interest Paid.</p>
         </>
       )
     },
@@ -243,7 +242,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
                     </p>
                 </div>
             </div>
-            <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*Calculated over the entire life of the loan based on current settings.</p>
         </>
       )
     },
@@ -251,26 +249,13 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
       title: "3. Visualizing Your Payments Over Time",
       content: (
         <>
-            <p className="text-sm text-[var(--text-color-muted)] mb-4">
-                Notice how the interest (pink) dominates the early years of the loan repayments.
-            </p>
+            <p className="text-sm text-[var(--text-color-muted)] mb-4">Notice how the interest (pink) dominates the early years.</p>
             <div style={{ width: '100%', height: 400 }}>
-                <ResponsiveContainer minWidth={0} minHeight={0}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                    <BarChart data={annualBankChartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                      <XAxis 
-                        dataKey="year" 
-                        stroke="var(--text-color)" 
-                        tick={{ fontSize: 12 }} 
-                        label={{ value: 'Years', position: 'insideBottom', offset: -10, fill: 'var(--text-color-muted)' }}
-                        interval="preserveStartEnd"
-                        tickCount={Math.ceil(bankLoanCalculation.termInYears / 5)}
-                      />
-                      <YAxis 
-                        stroke="var(--text-color)" 
-                        tickFormatter={formatChartCurrency} 
-                        tick={{ fontSize: 12 }} 
-                      />
+                      <XAxis dataKey="year" stroke="var(--text-color)" tick={{ fontSize: 12 }} label={{ value: 'Years', position: 'insideBottom', offset: -10, fill: 'var(--text-color-muted)' }} />
+                      <YAxis stroke="var(--text-color)" tickFormatter={formatChartCurrency} tick={{ fontSize: 12 }} />
                       <RechartsTooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(128, 128, 128, 0.1)' }} />
                       <Legend iconType="square" wrapperStyle={{fontSize: "14px", color: "var(--text-color-muted)", paddingTop: '20px' }} />
                       <Bar dataKey="Principal" name="Principal Paid" stackId="a" fill="var(--chart-color-principal)" />
@@ -278,7 +263,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
                   </BarChart>
                 </ResponsiveContainer>
             </div>
-            <p className="text-xs text-center text-[var(--text-color-muted)] mt-3 italic print:hidden">*This chart shows the total principal and interest paid each year over the life of the loan.</p>
         </>
       )
     },
@@ -286,11 +270,9 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
       title: "4. First Year Allocation",
       content: (
         <>
-            <p className="text-sm text-[var(--text-color-muted)] mb-4">
-                This chart illustrates the proportion of your payments that go towards interest versus reducing your principal debt in the first year.
-            </p>
+            <p className="text-sm text-[var(--text-color-muted)] mb-4">Proportion of payments going towards interest vs principal in Year 1.</p>
             <div style={{ width: '100%', height: 400 }}>
-                <ResponsiveContainer minWidth={0} minHeight={0}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={firstYearPieData}
@@ -325,21 +307,6 @@ const Tab2_InterestBreakdown: React.FC<Props> = ({ appState, setAppState, calcul
       )
     }
   ];
-
-  // Move the early return check to the END to avoid hooks violation
-  if (bankLoanCalculation.termInYears === Infinity) {
-    return (
-        <div className="animate-fade-in">
-            <Card>
-                <div className="text-center text-yellow-400 p-4">
-                    <p className="font-bold text-lg">Unable to calculate breakdown.</p>
-                    <p>Repayments are not high enough to cover the interest on the loan.</p>
-                    <p className="text-sm mt-2 text-black/70">Adjust Repayments or Interest Rate in the Current Loan tab.</p>
-                </div>
-            </Card>
-        </div>
-    );
-  }
 
   return (
     <div className="animate-fade-in">

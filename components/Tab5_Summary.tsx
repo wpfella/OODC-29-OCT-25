@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { AppState, AmortizationDataPoint, InvestmentProperty, Frequency } from '../types';
 import Card from './common/Card';
@@ -46,14 +45,14 @@ const calculatePropertyCashflow = (prop: InvestmentProperty): number => {
 const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, onUploadRecord, zapierStatus }) => {
   const { 
     loan, people, incomes, expenses, clientEmail, clientPhone, 
-    investmentProperties, idealRetirementAge,
+    investmentProperties, otherDebts, idealRetirementAge,
     investmentAmountPercentage, payoffStrategy, investmentGrowthRate,
     crownMoneyInterestRate, propertyGrowthRate, futureChanges, futureLumpSums,
     currentLender, allPartiesInAttendance, numberOfKids
   } = appState;
   
   const { 
-    bankLoanCalculation, crownMoneyLoanCalculation, wealthProjection, 
+    bankLoanCalculation, crownMoneyLoanCalculation, otherDebtsStatusQuoInterest, 
     totalMonthlyIncome, totalMonthlyExpenses, investmentLoanCalculations,
     retirementWealthProjection, getMonthlyAmount, bankSurplus
   } = calculations;
@@ -74,8 +73,13 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
   const isBankLoanValid = bankLoanCalculation.termInYears !== Infinity;
   const isCrownLoanValid = crownMoneyLoanCalculation.termInYears !== Infinity;
   
-  // Primary Loan Savings
-  const primaryInterestSaved = isBankLoanValid && isCrownLoanValid ? bankLoanCalculation.totalInterest - crownMoneyLoanCalculation.totalInterest : 0;
+  // Primary Loan Savings logic:
+  // Bank total cost = Primary Bank Int + Status Quo Other Debts Int
+  // Crown total cost = Consolidated Crown Int
+  const primaryInterestSaved = isBankLoanValid && isCrownLoanValid 
+    ? (bankLoanCalculation.totalInterest + otherDebtsStatusQuoInterest) - crownMoneyLoanCalculation.totalInterest 
+    : 0;
+
   const netLoanAmount = loan.amount - (loan.offsetBalance || 0);
 
   // Investment Properties
@@ -210,6 +214,16 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                 <SummaryItem label="Net Loan Amount" value={formatCurrency(netLoanAmount)} valueClassName="font-bold" />
                 <SummaryItem label="Interest Rate" value={`${loan.interestRate.toFixed(2)}%`} />
                 <SummaryItem label="Repayment" value={`${formatCurrency(loan.repayment)} / ${loan.frequency}`} />
+                
+                {otherDebts.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-dashed border-[var(--border-color)]">
+                    <h4 className="font-semibold text-sm mb-2 text-[var(--text-color)] print:text-black">Consolidated Debts</h4>
+                    {otherDebts.map(d => (
+                        <SummaryItem key={d.id} label={d.name} value={formatCurrency(d.amount)} />
+                    ))}
+                    <SummaryItem label="Total Consolidated Principal" value={formatCurrency(otherDebts.reduce((s,d) => s + d.amount, 0))} valueClassName="font-bold text-[var(--title-color)]" />
+                  </div>
+                )}
             </Card>
 
             <Card title="Budget Summary">
@@ -285,7 +299,10 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                           <p className="text-3xl font-bold my-1 text-[var(--chart-color-crown)] print:text-green-700">{formatCurrency(totalInterestSaved)}</p>
                       </div>
                       <div className="mt-2 text-sm">
-                          <SummaryItem label="Primary Home Interest Saved" value={formatCurrency(primaryInterestSaved)} />
+                          <SummaryItem label="Mortgage Interest Saved" value={formatCurrency(primaryInterestSaved - otherDebtsStatusQuoInterest)} />
+                          {otherDebts.length > 0 && (
+                            <SummaryItem label="Savings from Debt Consolidation" value={formatCurrency(otherDebtsStatusQuoInterest)} valueClassName="text-green-600" />
+                          )}
                           {hasInvestments && canCalculateInvestmentSavings && <SummaryItem label="Investment Interest Saved" value={formatCurrency(investmentInterestSaved)} />}
                       </div>
                   </div>
@@ -362,7 +379,7 @@ const Tab5_Summary: React.FC<Props> = ({ appState, setAppState, calculations, on
                     <div>Payoff Time</div>
                     <div>{formatYears(bankLoanCalculation.termInYears)}</div>
                     <div>Total Interest</div>
-                    <div>{formatCurrency(bankLoanCalculation.totalInterest)}</div>
+                    <div>{formatCurrency(bankLoanCalculation.totalInterest + otherDebtsStatusQuoInterest)}</div>
                     {people.map(p => <React.Fragment key={p.id}><div>{p.name} Debt Free</div><div>Age {isBankLoanValid ? Math.ceil(p.age + bankLoanCalculation.termInYears) : 'N/A'}</div></React.Fragment>)}
                 </div>
             </div>

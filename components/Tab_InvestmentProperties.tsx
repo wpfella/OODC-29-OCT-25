@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppState, InvestmentProperty, InvestmentPropertyExpense } from '../types';
+import { AppState, InvestmentProperty, InvestmentPropertyExpense, Frequency } from '../types';
 import Card from './common/Card';
 import SliderInput from './common/SliderInput';
 import EditableField from './common/EditableField';
 import Tooltip from './common/Tooltip';
-import { InfoIcon, CalendarIcon } from './common/IconComponents';
+import { InfoIcon, CalendarIcon, ArrowPathIcon } from './common/IconComponents';
 import { calculatePIPayment, calculateIOPayment } from '../hooks/useMortgageCalculations';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -16,7 +16,7 @@ interface Props {
   setWarningToast: (message: string) => void;
 }
 
-const getMonthlyFromAnyFrequency = (amount: number, frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually' ): number => {
+const getMonthlyFromAnyFrequency = (amount: number, frequency: Frequency ): number => {
     switch (frequency) {
       case 'weekly': return amount * (52/12);
       case 'fortnightly': return amount * (26/12);
@@ -32,7 +32,8 @@ const InvestmentPropertyCard: React.FC<{
     onUpdate: (id: number, field: keyof InvestmentProperty, value: any) => void;
     onRemove: (id: number) => void;
     setWarningToast: (message: string) => void;
-}> = React.memo(({ property, onUpdate, onRemove, setWarningToast }) => {
+    displayScenario: 'bank' | 'crown';
+}> = React.memo(({ property, onUpdate, onRemove, setWarningToast, displayScenario }) => {
     const [isStartDateFocused, setIsStartDateFocused] = React.useState(false);
     const [isPurchaseDateFocused, setIsPurchaseDateFocused] = React.useState(false);
     const [repaymentInput, setRepaymentInput] = useState(String(property.repayment));
@@ -91,13 +92,22 @@ const InvestmentPropertyCard: React.FC<{
         onUpdate(property.id, 'loanType', 'IO');
     };
 
+    const handleRefreshRepayment = () => {
+        if (property.loanType === 'IO') {
+            handleCalculateIO();
+        } else {
+            handleCalculatePI();
+        }
+    };
+
     // --- Crown Calculators ---
     const updateCrownSettings = (field: keyof NonNullable<InvestmentProperty['crownSettings']>, value: any) => {
         const currentSettings = property.crownSettings || {
             loanType: property.loanType,
             repayment: property.repayment,
             interestOnlyTerm: property.interestOnlyTerm || 0,
-            interestRate: property.interestRate
+            interestRate: property.interestRate,
+            repaymentFrequency: property.repaymentFrequency
         };
         onUpdate(property.id, 'crownSettings', { ...currentSettings, [field]: value });
     };
@@ -106,14 +116,15 @@ const InvestmentPropertyCard: React.FC<{
         const remainingTerm = getRemainingTerm();
         const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
         const crownRate = property.crownSettings?.interestRate ?? property.interestRate;
-        const newRepayment = calculatePIPayment(netLoanAmount, crownRate, remainingTerm, property.repaymentFrequency);
+        const crownFreq = property.crownSettings?.repaymentFrequency ?? property.repaymentFrequency;
+        const newRepayment = calculatePIPayment(netLoanAmount, crownRate, remainingTerm, crownFreq);
         
-        // Batch update to ensure consistent state
         const currentSettings = property.crownSettings || {
             interestRate: property.interestRate,
             interestOnlyTerm: 0,
             loanType: 'P&I',
-            repayment: 0
+            repayment: 0,
+            repaymentFrequency: property.repaymentFrequency
         };
         
         onUpdate(property.id, 'crownSettings', {
@@ -128,13 +139,15 @@ const InvestmentPropertyCard: React.FC<{
     const handleCalculateCrownIO = () => {
         const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
         const crownRate = property.crownSettings?.interestRate ?? property.interestRate;
-        const newRepayment = calculateIOPayment(netLoanAmount, crownRate, property.repaymentFrequency);
+        const crownFreq = property.crownSettings?.repaymentFrequency ?? property.repaymentFrequency;
+        const newRepayment = calculateIOPayment(netLoanAmount, crownRate, crownFreq);
         
         const currentSettings = property.crownSettings || {
             interestRate: property.interestRate,
             interestOnlyTerm: property.interestOnlyTerm || 5,
             loanType: 'IO',
-            repayment: 0
+            repayment: 0,
+            repaymentFrequency: property.repaymentFrequency
         };
 
         onUpdate(property.id, 'crownSettings', {
@@ -145,10 +158,27 @@ const InvestmentPropertyCard: React.FC<{
         setCrownRepaymentInput(String(Math.round(newRepayment)));
     };
 
-    const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
+    const handleRefreshCrownRepayment = () => {
+        const currentType = property.crownSettings?.loanType ?? property.loanType;
+        if (currentType === 'IO') {
+            handleCalculateCrownIO();
+        } else {
+            handleCalculateCrownPI();
+        }
+    };
 
     const monthlyRental = getMonthlyFromAnyFrequency(property.rentalIncome, property.rentalIncomeFrequency);
-    const monthlyRepayment = getMonthlyFromAnyFrequency(property.repayment, property.repaymentFrequency);
+    
+    // Choose repayment based on scenario
+    let monthlyRepayment = 0;
+    if (displayScenario === 'crown') {
+        const crownRate = property.crownSettings?.interestRate ?? property.interestRate;
+        const netLoan = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
+        monthlyRepayment = calculateIOPayment(netLoan, crownRate, 'monthly');
+    } else {
+        monthlyRepayment = getMonthlyFromAnyFrequency(property.repayment, property.repaymentFrequency);
+    }
+
     const monthlyExpenses = property.expenses.reduce((sum, exp) => sum + getMonthlyFromAnyFrequency(exp.amount, exp.frequency), 0);
     const netCashflow = monthlyRental - monthlyRepayment - monthlyExpenses;
 
@@ -163,14 +193,18 @@ const InvestmentPropertyCard: React.FC<{
         setCrownRepaymentInput(String(property.crownSettings?.repayment ?? property.repayment));
     }, [property.crownSettings?.repayment, property.repayment]);
 
-    // Ensure crown settings exist
+    // Ensure crown settings exist and default to IO
     useEffect(() => {
         if (!property.crownSettings) {
+            const netLoanAmount = Math.max(0, property.loanAmount - (property.offsetBalance || 0));
+            const ioRepayment = calculateIOPayment(netLoanAmount, property.interestRate, property.repaymentFrequency);
+            
             onUpdate(property.id, 'crownSettings', {
-                loanType: property.loanType,
-                repayment: property.repayment,
-                interestOnlyTerm: property.interestOnlyTerm || 0,
+                loanType: 'IO',
+                repayment: Math.round(ioRepayment),
+                interestOnlyTerm: property.loanTerm,
                 interestRate: property.interestRate,
+                repaymentFrequency: property.repaymentFrequency
             });
         }
     }, []); // Run once on mount
@@ -197,7 +231,7 @@ const InvestmentPropertyCard: React.FC<{
     const inputClasses = "w-full bg-[var(--input-bg-color)] p-2 rounded-md border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
     const selectClasses = `custom-select ${inputClasses}`;
 
-    const crownSettings = property.crownSettings || { loanType: property.loanType, repayment: property.repayment, interestOnlyTerm: property.interestOnlyTerm || 0, interestRate: property.interestRate };
+    const crownSettings = property.crownSettings || { loanType: property.loanType, repayment: property.repayment, interestOnlyTerm: property.interestOnlyTerm || 0, interestRate: property.interestRate, repaymentFrequency: property.repaymentFrequency };
 
     return (
         <Card className="mb-6">
@@ -322,7 +356,16 @@ const InvestmentPropertyCard: React.FC<{
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-color)] mb-1">Current Repayments</label>
+                        <div className="flex justify-between items-end mb-1">
+                            <label className="block text-sm font-medium text-[var(--text-color)]">Current Repayments</label>
+                            <button 
+                                onClick={handleRefreshRepayment}
+                                className="flex items-center gap-1 text-[10px] font-bold text-[var(--title-color)] hover:underline uppercase tracking-tight"
+                            >
+                                <ArrowPathIcon className="h-3 w-3" />
+                                Recalculate
+                            </button>
+                        </div>
                         <div className="flex items-center gap-2">
                             <div className="relative flex-grow">
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
@@ -407,7 +450,16 @@ const InvestmentPropertyCard: React.FC<{
                     </div>
 
                     <div className="pt-2">
-                        <label className="block text-sm font-medium text-[var(--title-color)] mb-1">Target Repayments</label>
+                        <div className="flex justify-between items-end mb-1">
+                            <label className="block text-sm font-medium text-[var(--title-color)]">Target Repayments</label>
+                            <button 
+                                onClick={handleRefreshCrownRepayment}
+                                className="flex items-center gap-1 text-[10px] font-bold text-[var(--title-color)] hover:underline uppercase tracking-tight"
+                            >
+                                <ArrowPathIcon className="h-3 w-3" />
+                                Recalculate
+                            </button>
+                        </div>
                         <div className="flex items-center gap-2">
                             <div className="relative flex-grow">
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-color-muted)]">$</span>
@@ -419,7 +471,17 @@ const InvestmentPropertyCard: React.FC<{
                                     className={`${inputClasses} pl-7 border-[var(--title-color)]/30 focus:border-[var(--title-color)]`} 
                                 />
                             </div>
-                            <span className="text-sm font-medium text-[var(--text-color-muted)] capitalize self-center">{property.repaymentFrequency}</span>
+                            <select 
+                                value={crownSettings.repaymentFrequency || property.repaymentFrequency} 
+                                onChange={e => updateCrownSettings('repaymentFrequency', e.target.value)}
+                                className={`${selectClasses} w-32 border-[var(--title-color)]/30 focus:border-[var(--title-color)]`}
+                            >
+                                <option value="weekly">Weekly</option>
+                                <option value="fortnightly">Fortnightly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="quarterly">Quarterly</option>
+                                <option value="annually">Annually</option>
+                            </select>
                         </div>
                          <div className="mt-2 flex gap-2">
                             <button
@@ -449,8 +511,8 @@ const InvestmentPropertyCard: React.FC<{
                             />
                         </div>
                     )}
-                    <div className="p-3 bg-[var(--input-bg-color)] rounded text-xs text-[var(--text-color-muted)] italic">
-                        The Crown strategy will use the higher of your target repayment or the required minimum. Any budget surplus will further accelerate debt reduction (Snowball).
+                    <div className="p-3 bg-[var(--input-bg-color)] rounded text-xs text-[var(--title-color)] font-semibold border border-[var(--title-color)]/20 italic">
+                        Crown strategy uses Interest Only (IO) on investments to maximize debt-reduction firepower for your primary home.
                     </div>
                 </div>
             </div>
@@ -515,7 +577,7 @@ const InvestmentPropertyCard: React.FC<{
 
                 <div className={`p-4 rounded-lg border ${netCashflow >= 0 ? 'border-[var(--color-positive-text)]' : 'border-[var(--color-negative-text)]'}`} style={{ backgroundColor: netCashflow >= 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
                     <div className="flex justify-between items-center">
-                        <span className="font-bold text-lg" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Monthly Cashflow (Current Scenario)</span>
+                        <span className="font-bold text-lg" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Monthly Cashflow ({displayScenario === 'crown' ? 'Strategy (Optimized IO)' : 'Current Situation'})</span>
                         <span className="font-extrabold text-2xl" style={{ color: netCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netCashflow)}</span>
                     </div>
                     <div className="mt-3 text-xs space-y-1 pt-2 border-t border-black/10 dark:border-white/10">
@@ -524,7 +586,7 @@ const InvestmentPropertyCard: React.FC<{
                             <span className="text-[var(--color-positive-text)] font-medium">+{formatCurrency(monthlyRental)}</span>
                         </div>
                          <div className="flex justify-between items-center text-[var(--text-color-muted)]">
-                            <span>Current Repayments (Monthly):</span>
+                            <span>{displayScenario === 'crown' ? 'Optimized Repayments (IO)' : 'Current Repayments'} (Monthly):</span>
                             <span className="text-[var(--color-negative-text)] font-medium">-{formatCurrency(monthlyRepayment)}</span>
                         </div>
                          <div className="flex justify-between items-center text-[var(--text-color-muted)]">
@@ -540,7 +602,8 @@ const InvestmentPropertyCard: React.FC<{
 
 
 const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calculations, setWarningToast }) => {
-    
+    const { investmentCashflowScenario = 'crown' } = appState;
+
     const handleAddProperty = () => {
         const today = new Date().toISOString().split('T')[0];
         
@@ -551,21 +614,18 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
             loanType: 'IO' as 'P&I' | 'IO',
             interestRate: 6.5,
             loanTerm: 30,
-            repaymentFrequency: 'monthly' as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually',
+            repaymentFrequency: 'monthly' as Frequency,
         };
         
         const netLoanAmount = Math.max(0, propDefaults.loanAmount - (propDefaults.offsetBalance || 0));
-        
-        const minRepayment = propDefaults.loanType === 'P&I'
-            ? calculatePIPayment(netLoanAmount, propDefaults.interestRate, propDefaults.loanTerm, propDefaults.repaymentFrequency)
-            : calculateIOPayment(netLoanAmount, propDefaults.interestRate, propDefaults.repaymentFrequency);
+        const ioRepayment = calculateIOPayment(netLoanAmount, propDefaults.interestRate, propDefaults.repaymentFrequency);
 
         const newProperty: InvestmentProperty = {
             id: Date.now(),
             address: 'New Property',
             ...propDefaults,
             loanStartDate: today,
-            repayment: Math.ceil(minRepayment),
+            repayment: Math.ceil(ioRepayment),
             interestOnlyTerm: 5,
             rentalIncome: 500,
             rentalIncomeFrequency: 'weekly',
@@ -574,9 +634,10 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
             rentalGrowthRate: 3.5,
             crownSettings: {
                 loanType: 'IO',
-                repayment: Math.ceil(minRepayment),
-                interestOnlyTerm: 5,
-                interestRate: 6.5 // Default to same as prop
+                repayment: Math.ceil(ioRepayment),
+                interestOnlyTerm: 30,
+                interestRate: 6.5,
+                repaymentFrequency: 'monthly'
             },
             expenses: [
                 { id: 1, name: 'Rates', amount: 500, frequency: 'quarterly' },
@@ -605,11 +666,35 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
         }));
     };
 
-    const { investmentPropertiesNetCashflow } = calculations;
+    const { bankInvestmentNetCashflow, crownInvestmentNetCashflow } = calculations;
+    const activeCashflow = investmentCashflowScenario === 'crown' ? crownInvestmentNetCashflow : bankInvestmentNetCashflow;
     const formatCurrency = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
     return (
         <div className="animate-fade-in space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] gap-4">
+                <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-[var(--title-color)]">Cashflow Analysis Scenario:</h3>
+                    <Tooltip text="Switch between viewing cashflow based on current Bank settings or proposed Crown Money Strategy settings (always optimized with Interest Only at the Crown Rate).">
+                        <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
+                    </Tooltip>
+                </div>
+                <div className="flex bg-gray-100 dark:bg-black/20 p-1.5 rounded-xl border border-[var(--border-color)] shadow-inner">
+                    <button 
+                        onClick={() => setAppState(prev => ({...prev, investmentCashflowScenario: 'crown'}))}
+                        className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${investmentCashflowScenario === 'crown' ? 'bg-[var(--title-color)] text-white shadow-md transform scale-[1.02]' : 'text-gray-500 hover:text-[var(--title-color)]'}`}
+                    >
+                        Strategy (Optimized) 🏆
+                    </button>
+                    <button 
+                        onClick={() => setAppState(prev => ({...prev, investmentCashflowScenario: 'bank'}))}
+                        className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${investmentCashflowScenario === 'bank' ? 'bg-gray-500 text-white shadow-md transform scale-[1.02]' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Current / Bank
+                    </button>
+                </div>
+            </div>
+
             {appState.investmentProperties.map(prop => (
                 <InvestmentPropertyCard
                     key={prop.id}
@@ -617,6 +702,7 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
                     onUpdate={handlePropertyUpdate}
                     onRemove={handleRemoveProperty}
                     setWarningToast={setWarningToast}
+                    displayScenario={investmentCashflowScenario}
                 />
             ))}
 
@@ -627,15 +713,15 @@ const Tab_InvestmentProperties: React.FC<Props> = ({ appState, setAppState, calc
 
                 {appState.investmentProperties.length > 0 && (
                     <Card title="Total Investment Summary" className="w-full">
-                        <div className={`p-4 rounded-lg border ${investmentPropertiesNetCashflow >= 0 ? 'border-[var(--color-positive-text)]' : 'border-[var(--color-negative-text)]'}`} style={{ backgroundColor: investmentPropertiesNetCashflow >= 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
+                        <div className={`p-4 rounded-lg border ${activeCashflow >= 0 ? 'border-[var(--color-positive-text)]' : 'border-[var(--color-negative-text)]'}`} style={{ backgroundColor: activeCashflow >= 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
                             <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
-                                    <span className="font-bold text-xl" style={{ color: investmentPropertiesNetCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Total Net Monthly Cashflow (Current)</span>
-                                    <Tooltip text="This is the combined cashflow from all investment properties using Current/Bank settings. This amount is automatically added to your income (if positive) or expenses (if negative) in the 'Income & Expenses' tab.">
+                                    <span className="font-bold text-xl" style={{ color: activeCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Total Net Monthly Cashflow ({investmentCashflowScenario === 'crown' ? 'Strategy Optimized IO' : 'Current Bank'})</span>
+                                    <Tooltip text="This is the combined cashflow from all investment properties. The Crown scenario assumes Interest Only payments to maximize your primary home loan payoff speed.">
                                         <InfoIcon className="h-5 w-5 text-[var(--text-color-muted)]"/>
                                     </Tooltip>
                                 </div>
-                                <span className="font-extrabold text-3xl" style={{ color: investmentPropertiesNetCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(investmentPropertiesNetCashflow)}</span>
+                                <span className="font-extrabold text-3xl" style={{ color: activeCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(activeCashflow)}</span>
                             </div>
                         </div>
                     </Card>

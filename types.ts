@@ -68,6 +68,13 @@ export interface InvestmentPropertyExpense {
   frequency: Frequency;
 }
 
+export interface CustomSection {
+  id: string;
+  title: string;
+  html: string;
+  tab: string;
+}
+
 export interface InvestmentProperty {
   id: number;
   address: string;
@@ -92,6 +99,7 @@ export interface InvestmentProperty {
       repayment: number;
       interestOnlyTerm: number;
       interestRate?: number;
+      repaymentFrequency?: Frequency;
   };
 }
 
@@ -115,13 +123,14 @@ export interface AppState {
   currentLender: string;
   numberOfKids: number;
   allPartiesInAttendance: 'Yes- Single' | 'Yes- Couple' | 'Yes- Other' | 'Only 1 of 2 Showed';
-  // New properties for Debt Recycling
   debtRecyclingEnabled: boolean;
   debtRecyclingInvestmentRate: number;
   debtRecyclingLoanInterestRate: number;
   marginalTaxRate: number;
   debtRecyclingPercentage: number;
   notepadContent: string;
+  investmentCashflowScenario: 'bank' | 'crown';
+  customSections: CustomSection[];
 }
 
 export enum Tab {
@@ -143,7 +152,6 @@ export interface AmortizationDataPoint {
   principalPaid: number;
   remainingBalance: number;
   offsetBalance: number;
-  // New properties to track total portfolio
   totalInterestPaid?: number;
   totalPrincipalPaid?: number;
   totalRemainingBalance?: number;
@@ -154,7 +162,6 @@ export interface LoanSummary {
   totalInterest: number;
   totalPaid: number;
   amortizationSchedule: AmortizationDataPoint[];
-  // Optional schedules for debt recycling
   investmentLoanSchedule?: { month: number; balance: number }[];
   investmentPortfolioSchedule?: { month: number; value: number }[];
   finalInvestmentPortfolioValue?: number;

@@ -552,7 +552,7 @@ const FutureLumpSumSection: React.FC<FutureLumpSumSectionProps> = React.memo(({ 
                                 <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1 flex items-center gap-1">
                                     Amount
                                     <Tooltip text="Enter the value of the event. Select 'Income' for money in (e.g., inheritance) or 'Expense' for money out (e.g., car purchase). This amount will be added to or removed from your offset/savings on the specified date.">
-                                        <InfoIcon className="h-3 w-3" />
+                                        <InfoIcon className="h-3_3" />
                                     </Tooltip>
                                 </label>
                                 <input
@@ -608,9 +608,19 @@ interface Props {
 }
 
 const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculations }) => {
-  const { incomes, expenses, futureChanges, futureLumpSums, loan, otherDebts } = appState;
-  // Use bankSurplus (Current Situation) as the primary surplus display on this tab
-  const { totalMonthlyIncome, totalMonthlyExpenses, investmentPropertiesNetCashflow, getMonthlyAmount, bankSurplus } = calculations;
+  const { incomes, expenses, futureChanges, futureLumpSums, loan, otherDebts, investmentCashflowScenario = 'crown' } = appState;
+  const { 
+    bankInvestmentNetCashflow, 
+    crownInvestmentNetCashflow, 
+    totalMonthlyIncome: bankTotalIncome, 
+    totalMonthlyExpenses: bankTotalExpenses, 
+    bankSurplus, 
+    crownSurplus,
+    getMonthlyAmount 
+  } = calculations;
+
+  const activeInvestmentCashflow = investmentCashflowScenario === 'crown' ? crownInvestmentNetCashflow : bankInvestmentNetCashflow;
+  const activeSurplus = investmentCashflowScenario === 'crown' ? crownSurplus : bankSurplus;
 
   const handleListChange = <T,>(list: T[], setList: (list: T[]) => void, index: number, field: keyof T, value: any) => {
     const newList = [...list];
@@ -637,8 +647,7 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
   const formatCurrency = (value: number, digits = 0) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
 
   const monthlyLoanRepayment = getMonthlyAmount(loan.repayment, loan.frequency);
-  const surplusForDebtReduction = bankSurplus; // Display current surplus
-  const netMonthlyCashflow = surplusForDebtReduction - monthlyLoanRepayment;
+  const netMonthlyCashflow = activeSurplus - monthlyLoanRepayment;
 
   const inputClasses = "bg-[var(--input-bg-color)] p-2 rounded border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
   
@@ -776,21 +785,39 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
 
       {/* Right Column */}
       <div className="space-y-6">
-        <Card title="Cashflow Summary">
+        <Card title={
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
+            <span>Cashflow Summary</span>
+            <div className="flex bg-gray-100 dark:bg-black/20 p-1 rounded-xl border border-[var(--border-color)]">
+              <button 
+                  onClick={() => setAppState(prev => ({...prev, investmentCashflowScenario: 'crown'}))}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${investmentCashflowScenario === 'crown' ? 'bg-[var(--title-color)] text-white shadow-sm' : 'text-gray-500'}`}
+              >
+                  Strategy 🏆
+              </button>
+              <button 
+                  onClick={() => setAppState(prev => ({...prev, investmentCashflowScenario: 'bank'}))}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${investmentCashflowScenario === 'bank' ? 'bg-gray-500 text-white shadow-sm' : 'text-gray-500'}`}
+              >
+                  Bank
+              </button>
+            </div>
+          </div>
+        }>
             <div className="space-y-3 text-sm">
                 <div className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--color-positive-bg)' }}>
-                    <span className="font-medium" style={{ color: 'var(--color-positive-text)'}}>Total Monthly Income</span>
-                    <span className="font-semibold" style={{ color: 'var(--color-positive-text)'}}>{formatCurrency(totalMonthlyIncome)}</span>
+                    <span className="font-medium" style={{ color: 'var(--color-positive-text)'}}>Total Monthly Household Income</span>
+                    <span className="font-semibold" style={{ color: 'var(--color-positive-text)'}}>{formatCurrency(incomes.reduce((s,i) => s + getMonthlyAmount(i.amount, i.frequency), 0))}</span>
                 </div>
-                 {investmentPropertiesNetCashflow !== 0 && (
-                    <div className={`flex justify-between items-center p-2 rounded-lg text-xs ${investmentPropertiesNetCashflow > 0 ? 'print:bg-green-100' : 'print:bg-red-100'}`} style={{ backgroundColor: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
+                 {activeInvestmentCashflow !== 0 && (
+                    <div className={`flex justify-between items-center p-2 rounded-lg text-xs ${activeInvestmentCashflow > 0 ? 'print:bg-green-100' : 'print:bg-red-100'}`} style={{ backgroundColor: activeInvestmentCashflow > 0 ? 'var(--color-positive-bg)' : 'var(--color-negative-bg)' }}>
                     <div className="flex items-center gap-2">
-                        <span className={`font-medium ${investmentPropertiesNetCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Investment Cashflow</span>
-                        <Tooltip text="The combined monthly cashflow (income minus all expenses) from your investment properties, based on your Current/Bank settings. This is automatically factored into your total income/expenses below.">
+                        <span className={`font-medium ${activeInvestmentCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: activeInvestmentCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>Net Investment Cashflow ({investmentCashflowScenario === 'crown' ? 'IO @ Crown Rate' : 'Bank Repay'})</span>
+                        <Tooltip text="The combined monthly cashflow (income minus all expenses) from your investment properties. The Crown Strategy scenario always assumes Interest Only payments at the Crown Rate to maximize your primary home loan payoff speed.">
                             <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)] print:hidden"/>
                         </Tooltip>
                     </div>
-                    <span className={`font-semibold ${investmentPropertiesNetCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: investmentPropertiesNetCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(investmentPropertiesNetCashflow)}</span>
+                    <span className={`font-semibold ${activeInvestmentCashflow > 0 ? 'print:text-green-800' : 'print:text-red-800'}`} style={{ color: activeInvestmentCashflow > 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(activeInvestmentCashflow)}</span>
                     </div>
                 )}
                 <div>
@@ -800,21 +827,17 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                             if (categoryExpenses.length === 0) return null;
 
                             const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + getMonthlyAmount(exp.amount, exp.frequency), 0);
-                            const categoryPercentage = totalMonthlyIncome > 0 ? (categoryTotal / totalMonthlyIncome) * 100 : 0;
+                            const categoryPercentage = activeSurplus + monthlyLoanRepayment > 0 ? (categoryTotal / (activeSurplus + monthlyLoanRepayment + activeInvestmentCashflow)) * 100 : 0; // rough approximation
 
                             return (
                                 <div key={category} className="pl-2 pb-2">
                                     <h5 className="font-semibold text-[var(--text-color)] text-left mb-1 capitalize">{category.replace(' Expenses', '')}</h5>
                                     {categoryExpenses.map(exp => {
                                         const monthlyAmount = getMonthlyAmount(exp.amount, exp.frequency);
-                                        const percentage = totalMonthlyIncome > 0 ? (monthlyAmount / totalMonthlyIncome) * 100 : 0;
                                         return (
                                             <div key={exp.id} className="flex justify-between gap-4 italic items-center">
                                                 <span>{exp.name} ({formatCurrency(exp.amount,0)}/{exp.frequency.charAt(0)})</span>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
-                                                        {percentage.toFixed(1)}%
-                                                    </span>
                                                     <span>{formatCurrency(monthlyAmount, 2)}</span>
                                                 </div>
                                             </div>
@@ -822,76 +845,45 @@ const Tab3_IncomeExpenses: React.FC<Props> = ({ appState, setAppState, calculati
                                     })}
                                     <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-1 mt-1 border-t border-dashed border-[var(--border-color)] items-center">
                                         <span>Subtotal</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
-                                                {categoryPercentage.toFixed(1)}%
-                                            </span>
-                                            <span>{formatCurrency(categoryTotal, 2)}</span>
-                                        </div>
+                                        <span>{formatCurrency(categoryTotal, 2)}</span>
                                     </div>
                                 </div>
                             );
                         })}
-                        {investmentPropertiesNetCashflow < 0 && (() => {
-                            const shortfall = Math.abs(investmentPropertiesNetCashflow);
-                            const percentage = totalMonthlyIncome > 0 ? (shortfall / totalMonthlyIncome) * 100 : 0;
-                            return (
-                                <div className="flex justify-between gap-4 font-semibold text-[var(--text-color)] pt-2 border-t border-dashed border-[var(--border-color)] pl-2 items-center">
-                                    <span>Investment Shortfall</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-medium text-[var(--text-color-muted)] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
-                                            {percentage.toFixed(1)}%
-                                        </span>
-                                        <span>{formatCurrency(shortfall, 2)}</span>
-                                    </div>
-                                </div>
-                            );
-                        })()}
                     </div>
                     <div className="flex justify-between items-center p-2 rounded-lg mt-2" style={{ backgroundColor: 'var(--color-negative-bg)' }}>
-                        <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Total Monthly Expenses</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-medium opacity-80 bg-white/50 px-1.5 py-0.5 rounded-full" style={{ color: 'var(--color-negative-text)' }}>
-                                {totalMonthlyIncome > 0 ? ((totalMonthlyExpenses / totalMonthlyIncome) * 100).toFixed(1) : '0.0'}%
-                            </span>
-                            <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(totalMonthlyExpenses)}</span>
-                        </div>
+                        <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Total Monthly Living Expenses</span>
+                        <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(expenses.reduce((s,e) => s + getMonthlyAmount(e.amount, e.frequency), 0))}</span>
                     </div>
                 </div>
                 
                 <div>
                     <div className="flex justify-between items-center p-3 rounded-lg border" style={{ backgroundColor: 'var(--color-surplus-bg)', borderColor: 'var(--color-surplus-text)' }}>
                         <div className="flex items-center gap-2">
-                            <span className="font-bold" style={{ color: 'var(--color-surplus-text)' }}>Surplus for Debt Reduction</span>
-                            <Tooltip text="CALCULATION: Total Monthly Income - Total Monthly Expenses (including investment shortfalls). This is the key figure for the Crown Money strategy. This entire amount is used to accelerate your debt reduction.">
+                            <span className="font-bold" style={{ color: 'var(--color-surplus-text)' }}>Surplus for Debt Reduction ({investmentCashflowScenario === 'crown' ? 'Strategy' : 'Bank'})</span>
+                            <Tooltip text="This is the key figure for the Crown Money strategy. When using the 'Strategy' toggle, this uses Interest Only cashflow from investments to give you the most accurate view of your debt-reduction firepower.">
                                 <InfoIcon className="h-4 w-4 text-blue-300 print:hidden"/>
                             </Tooltip>
                         </div>
-                        <span className="font-bold text-lg" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(surplusForDebtReduction)}</span>
-                    </div>
-                    <div className="text-right text-xs text-[var(--text-color-muted)] mt-1 pr-2 italic">
-                        ( {formatCurrency(totalMonthlyIncome)} - {formatCurrency(totalMonthlyExpenses)} )
+                        <span className="font-bold text-lg" style={{ color: 'var(--color-surplus-text)' }}>{formatCurrency(activeSurplus)}</span>
                     </div>
                 </div>
 
                 <hr className="border-[var(--border-color)] border-dashed my-2" />
 
                 <div className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--color-negative-bg)' }}>
-                    <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Current Loan Repayment</span>
+                    <span className="font-medium" style={{ color: 'var(--color-negative-text)' }}>Home Loan Repayment</span>
                     <span className="font-semibold" style={{ color: 'var(--color-negative-text)' }}>{formatCurrency(monthlyLoanRepayment)}</span>
                 </div>
                  <div>
                     <div className="flex justify-between items-center p-3 rounded-lg border-2" style={{ borderColor: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>
                         <div className="flex items-center gap-2">
-                            <span className="font-bold text-base" style={{ color: 'var(--text-color)' }}>Final Net Monthly Cashflow</span>
-                            <Tooltip text="CALCULATION: Surplus for Debt Reduction - Current Loan Repayment. This shows your leftover cashflow each month after paying living expenses and your primary home loan, but *before* other debt repayments. This figure represents the cashflow available under your bank's current structure.">
+                            <span className="font-bold text-base" style={{ color: 'var(--text-color)' }}>Leftover Cashflow ({investmentCashflowScenario === 'crown' ? 'Strategy' : 'Bank'})</span>
+                            <Tooltip text="This shows your leftover cashflow each month after all living expenses and home loan repayments.">
                                 <InfoIcon className="h-4 w-4 text-[var(--text-color)] print:hidden"/>
                             </Tooltip>
                         </div>
                         <span className="font-extrabold text-2xl" style={{ color: netMonthlyCashflow >= 0 ? 'var(--color-positive-text)' : 'var(--color-negative-text)' }}>{formatCurrency(netMonthlyCashflow)}</span>
-                    </div>
-                    <div className="text-right text-xs text-[var(--text-color-muted)] mt-1 pr-2 italic">
-                        ( {formatCurrency(surplusForDebtReduction)} - {formatCurrency(monthlyLoanRepayment)} )
                     </div>
                 </div>
             </div>

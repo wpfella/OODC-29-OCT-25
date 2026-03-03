@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { AppState } from '../types';
 import Card from './common/Card';
@@ -220,7 +221,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
                   </div>
               </div>
               <p className="text-xs text-[var(--text-color-muted)] text-center italic">
-                  *Your 'Investment Power' is your monthly surplus (Total Income - Living Expenses), which is available for investing once the loan is paid off.
+                  *Your 'Investment Power' is your monthly surplus (Total Income - Total Monthly Expenses), which is available for investing once the loan is paid off.
               </p>
           </Card>
 
@@ -395,7 +396,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
               <div>
                   <h4 className="text-center font-semibold mb-4">Net Worth Growth Comparison</h4>
                   <div style={{ width: '100%', height: 350 }}>
-                        <ResponsiveContainer minWidth={0} minHeight={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <AreaChart data={adjustedNetWorthProjection} margin={{ top: 20, right: 20, left: -10, bottom: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                                 <XAxis 
@@ -422,7 +423,7 @@ const Tab_In2Wealth: React.FC<Props> = ({ appState, setAppState, calculations })
               <div>
                    <h4 className="text-center font-semibold mb-4">Net Worth at Retirement</h4>
                    <div style={{ width: '100%', height: 350 }}>
-                        <ResponsiveContainer minWidth={0} minHeight={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <BarChart data={barChartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }} barSize={60}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
                                 <XAxis dataKey="name" stroke="var(--text-color)" tick={{ fontSize: 12 }} />
