@@ -1,14 +1,33 @@
 
-export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually';
+export enum Tab {
+  CurrentLoan = 'current-loan',
+  InterestBreakdown = 'interest-breakdown',
+  InvestmentProperties = 'investment-properties',
+  IncomeExpenses = 'income-expenses',
+  OODC = 'oodc',
+  InvestmentOODC = 'investment-oodc',
+  DebtRecycling = 'debt-recycling',
+  In2Wealth = 'in2wealth',
+  Reports = 'reports',
+  Summary = 'summary',
+}
+
+export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'annually' | 'quarterly';
 export type LoanFrequency = 'weekly' | 'fortnightly' | 'monthly';
 
-export interface LoanDetails {
+export interface ExpenseItem {
+  id: number;
+  name: string;
   amount: number;
-  propertyValue: number;
-  interestRate: number;
-  repayment: number;
-  frequency: LoanFrequency;
-  offsetBalance: number;
+  category: string;
+  frequency: Frequency;
+}
+
+export interface CustomSection {
+  id: string;
+  tab: string;
+  title: string;
+  html: string;
 }
 
 export interface Person {
@@ -24,14 +43,6 @@ export interface IncomeItem {
   frequency: Frequency;
 }
 
-export interface ExpenseItem {
-  id: number;
-  name:string;
-  amount: number;
-  category: 'FFF' | 'Soft Expenses' | 'Hard Expenses' | 'Other';
-  frequency: Frequency;
-}
-
 export interface OtherDebt {
   id: number;
   name: string;
@@ -39,26 +50,31 @@ export interface OtherDebt {
   interestRate: number;
   repayment: number;
   frequency: Frequency;
-  remainingTerm: number; // in years
+  remainingTerm: number;
 }
 
 export interface FutureChange {
   id: number;
-  description: string;
   type: 'income' | 'expense';
-  changeAmount: number; // can be negative for reduction
-  frequency: Frequency;
-  startDate: string; // 'YYYY-MM-DD'
-  endDate: string; // 'YYYY-MM-DD'
+  startDate: string;
+  endDate: string;
   isPermanent: boolean;
+  changeAmount: number;
+  frequency: Frequency;
+  description: string;
+  name?: string;
+  amount?: number;
+  startYear?: number;
+  duration?: number;
 }
 
 export interface FutureLumpSum {
   id: number;
-  description: string;
+  amount: number;
+  date: string;
   type: 'income' | 'expense';
-  amount: number; // Always positive
-  date: string; // 'YYYY-MM-DD'
+  name?: string;
+  year?: number;
 }
 
 export interface InvestmentPropertyExpense {
@@ -68,39 +84,66 @@ export interface InvestmentPropertyExpense {
   frequency: Frequency;
 }
 
-export interface CustomSection {
-  id: string;
-  title: string;
-  html: string;
-  tab: string;
-}
-
 export interface InvestmentProperty {
   id: number;
-  address: string;
-  propertyValue: number;
+  name: string;
+  value: number;
+  propertyValue?: number;
   loanAmount: number;
-  offsetBalance: number;
-  loanType: 'P&I' | 'IO';
   interestRate: number;
-  loanTerm: number; // in years
-  loanStartDate: string; // 'YYYY-MM-DD'
-  repayment: number;
-  repaymentFrequency: Frequency;
-  expenses: InvestmentPropertyExpense[];
+  rent: number;
   rentalIncome: number;
   rentalIncomeFrequency: Frequency;
-  isFuture?: boolean;
-  purchaseDate?: string;
+  expenses: InvestmentPropertyExpense[];
+  growthRate: number;
   rentalGrowthRate?: number;
-  interestOnlyTerm?: number; // in years
+  address?: string;
+  isFuture?: boolean;
   crownSettings?: {
-      loanType: 'P&I' | 'IO';
-      repayment: number;
-      interestOnlyTerm: number;
-      interestRate?: number;
-      repaymentFrequency?: Frequency;
+    interestRate: number;
   };
+  offsetBalance?: number;
+  repayment: number;
+  repaymentFrequency: Frequency;
+  loanType?: 'P&I' | 'IO';
+  loanTerm?: number;
+  interestOnlyTerm?: number;
+}
+
+export interface LoanDetails {
+  amount: number;
+  propertyValue: number;
+  interestRate: number;
+  repayment: number;
+  frequency: Frequency;
+  offsetBalance: number;
+  loanType?: 'P&I' | 'IO';
+  loanTerm?: number;
+  interestOnlyTerm?: number;
+}
+
+export interface AmortizationDataPoint {
+  month: number;
+  balance?: number;
+  remainingBalance: number;
+  interest?: number;
+  interestPaid: number;
+  principal?: number;
+  principalPaid: number;
+  offsetBenefit?: number;
+  cumulativeInterest?: number;
+  offsetBalance: number;
+}
+
+export interface LoanSummary {
+  termInYears: number;
+  totalInterest: number;
+  totalPrincipal?: number;
+  totalPaid: number;
+  payoffMonths?: number;
+  payoffYears?: number;
+  monthlyRepayment?: number;
+  amortizationSchedule: AmortizationDataPoint[];
 }
 
 export interface AppState {
@@ -115,57 +158,22 @@ export interface AppState {
   crownMoneyInterestRate: number;
   clientEmail: string;
   clientPhone: string;
-  investmentAmountPercentage: number; // The percentage of savings to invest
+  investmentAmountPercentage: number;
   investmentGrowthRate: number;
   idealRetirementAge: number;
   propertyGrowthRate: number;
-  payoffStrategy: 'snowball' | 'simultaneous';
+  payoffStrategy: string;
   currentLender: string;
   numberOfKids: number;
-  allPartiesInAttendance: 'Yes- Single' | 'Yes- Couple' | 'Yes- Other' | 'Only 1 of 2 Showed';
+  allPartiesInAttendance: string;
   debtRecyclingEnabled: boolean;
   debtRecyclingInvestmentRate: number;
   debtRecyclingLoanInterestRate: number;
   marginalTaxRate: number;
   debtRecyclingPercentage: number;
   notepadContent: string;
-  investmentCashflowScenario: 'bank' | 'crown';
+  investmentCashflowScenario: string;
   customSections: CustomSection[];
-}
-
-export enum Tab {
-  CurrentLoan,
-  InterestBreakdown,
-  InvestmentProperties,
-  IncomeExpenses,
-  OODC,
-  InvestmentOODC,
-  DebtRecycling,
-  In2Wealth,
-  Reports,
-  Summary,
-}
-
-export interface AmortizationDataPoint {
-  month: number;
-  interestPaid: number;
-  principalPaid: number;
-  remainingBalance: number;
-  offsetBalance: number;
-  totalInterestPaid?: number;
-  totalPrincipalPaid?: number;
-  totalRemainingBalance?: number;
-}
-
-export interface LoanSummary {
-  termInYears: number;
-  totalInterest: number;
-  totalPaid: number;
-  amortizationSchedule: AmortizationDataPoint[];
-  investmentLoanSchedule?: { month: number; balance: number }[];
-  investmentPortfolioSchedule?: { month: number; value: number }[];
-  finalInvestmentPortfolioValue?: number;
-  finalInvestmentLoanBalance?: number;
 }
 
 export interface SavedScenario {

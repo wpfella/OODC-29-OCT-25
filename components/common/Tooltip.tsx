@@ -1,21 +1,48 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 
 interface TooltipProps {
-  children: React.ReactNode;
   text: string;
+  children: React.ReactNode;
+  position?: 'top' | 'bottom' | 'left' | 'right';
   className?: string;
 }
 
-const Tooltip: React.FC<TooltipProps> = ({ children, text, className = '' }) => {
+const Tooltip: React.FC<TooltipProps> = ({
+  text,
+  children,
+  position = 'top',
+  className = ''
+}) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  const positionClasses = {
+    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
+    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
+    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
+    right: 'left-full top-1/2 -translate-y-1/2 ml-2'
+  };
+
+  const arrowClasses = {
+    top: 'top-full left-1/2 -translate-x-1/2 border-t-[var(--card-bg-color)]',
+    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-[var(--card-bg-color)]',
+    left: 'left-full top-1/2 -translate-y-1/2 border-l-[var(--card-bg-color)]',
+    right: 'right-full top-1/2 -translate-y-1/2 border-r-[var(--card-bg-color)]'
+  };
+
   return (
-    <div className={`relative flex items-center group ${className}`}>
+    <div
+      className={`relative inline-block ${className}`}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
       {children}
-      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none dark:bg-slate-200 dark:text-slate-900 print:hidden">
-        {text}
-        <svg className="absolute text-slate-800 h-2 w-full left-0 top-full dark:text-slate-200" x="0px" y="0px" viewBox="0 0 255 255">
-          <polygon className="fill-current" points="0,0 127.5,127.5 255,0"/>
-        </svg>
-      </div>
+      {isVisible && (
+        <div className={`absolute z-50 w-max max-w-xs p-2 text-xs font-medium text-white bg-slate-800 dark:bg-slate-700 rounded-lg shadow-lg animate-fade-in ${positionClasses[position]}`}>
+          {text}
+          <div className={`absolute w-0 h-0 border-4 border-transparent ${arrowClasses[position]}`}></div>
+        </div>
+      )}
     </div>
   );
 };

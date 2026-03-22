@@ -1,90 +1,62 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 interface SliderInputProps {
-  label: React.ReactNode;
+  label: string;
   value: number;
   onChange: (value: number) => void;
   min: number;
   max: number;
-  step: number;
+  step?: number;
   unit?: string;
+  className?: string;
 }
 
-const SliderInput: React.FC<SliderInputProps> = ({ label, value, onChange, min, max, step, unit }) => {
-  const [localValue, setLocalValue] = useState(value.toString());
-
-  useEffect(() => {
-    setLocalValue((prev) => {
-      const parsed = prev === '' ? 0 : parseFloat(prev);
-      if (!isNaN(parsed) && parsed === value) {
-        return prev;
-      }
-      return value.toString();
-    });
-  }, [value]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value;
-    setLocalValue(newVal);
-
-    if (newVal === '') {
-      onChange(0);
-    } else {
-      const numValue = parseFloat(newVal);
-      if (!isNaN(numValue)) {
-        onChange(numValue);
-      }
+const SliderInput: React.FC<SliderInputProps> = ({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  unit = '',
+  className = ''
+}) => {
+  const formatValue = (val: number) => {
+    if (unit === '$') {
+      return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
     }
-  };
-
-  const handleBlur = () => {
-    if (localValue === '') {
-        setLocalValue(value.toString());
-    } else {
-        const parsed = parseFloat(localValue);
-        if (!isNaN(parsed) && parsed === value) {
-             setLocalValue(value.toString());
-        }
-    }
-  };
-
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(parseFloat(e.target.value));
+    return `${val}${unit}`;
   };
 
   return (
-    <div className="w-full">
-      <div className="flex justify-between items-center mb-1">
-        <label className="block text-sm font-medium text-[var(--text-color)] print:text-black">{label}</label>
-        <span className="hidden print:block text-sm text-black font-medium">
-          {unit === '$' ? `${unit}${value.toLocaleString()}` : `${value.toLocaleString()}${unit || ''}`}
-        </span>
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex justify-between items-center">
+        <label className="text-sm font-medium text-[var(--text-color)]">{label}</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            className="w-24 bg-[var(--input-bg-color)] p-1 rounded border border-[var(--input-border-color)] text-right text-sm focus:outline-none focus:ring-1 focus:ring-[var(--title-color)]"
+          />
+          <span className="text-xs text-[var(--text-color-muted)]">{unit}</span>
+        </div>
       </div>
-      <div className="flex items-center gap-4 print:hidden">
+      <div className="flex items-center gap-4">
         <input
           type="range"
           min={min}
           max={max}
           step={step}
           value={value}
-          onChange={handleSliderChange}
-          className="w-full h-2 bg-[var(--slider-track-color)] rounded-lg appearance-none cursor-pointer"
-          style={{ accentColor: 'var(--input-border-focus-color)' }}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="flex-grow h-2 bg-[var(--input-bg-color)] rounded-lg appearance-none cursor-pointer accent-[var(--title-color)]"
         />
-        <div className="flex items-center bg-[var(--input-bg-color)] rounded-md border border-[var(--input-border-color)] focus-within:ring-2 focus-within:ring-[var(--input-border-focus-color)]">
-            {unit && <span className="text-[var(--text-color-muted)] pl-3">{unit}</span>}
-            <input
-            type="number"
-            value={localValue}
-            onChange={handleInputChange}
-            onBlur={handleBlur}
-            className="w-24 sm:w-28 bg-transparent text-[var(--text-color)] p-2 text-right rounded-md focus:outline-none"
-            min={min}
-            max={max}
-            step={step}
-            />
-        </div>
+      </div>
+      <div className="flex justify-between text-[10px] text-[var(--text-color-muted)] uppercase tracking-wider">
+        <span>{formatValue(min)}</span>
+        <span>{formatValue(max)}</span>
       </div>
     </div>
   );

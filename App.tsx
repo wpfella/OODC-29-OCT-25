@@ -17,6 +17,9 @@ import Toast from './components/common/Toast';
 import Modal from './components/common/Modal';
 import AdvancedCalculator from './components/common/AdvancedCalculator';
 import LoginScreen from './components/LoginScreen';
+import Sidebar from './components/Sidebar';
+import { auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import Notepad from './components/Notepad';
 import Assistant from './components/Assistant';
 import AICommandCenter from './components/AICommandCenter';
@@ -201,6 +204,20 @@ const zapierMessages = {
 
 const sanitizeAppState = (state: AppState): AppState => {
     const safeState = { ...state };
+    
+    // Helper to ensure a value is a finite number
+    const ensureFinite = (val: any, fallback: number) => {
+        const n = parseFloat(val);
+        return isFinite(n) && !isNaN(n) ? n : fallback;
+    };
+
+    // Sanitize Loan
+    safeState.loan.amount = ensureFinite(safeState.loan.amount, 350000);
+    safeState.loan.propertyValue = ensureFinite(safeState.loan.propertyValue, 450000);
+    safeState.loan.interestRate = ensureFinite(safeState.loan.interestRate, 6.5);
+    safeState.loan.repayment = ensureFinite(safeState.loan.repayment, 2500);
+    safeState.loan.offsetBalance = ensureFinite(safeState.loan.offsetBalance, 0);
+
     if (safeState.loan.interestRate > 20) safeState.loan.interestRate = 20;
     if (safeState.loan.interestRate < 0) safeState.loan.interestRate = 0;
     
@@ -224,6 +241,53 @@ const sanitizeAppState = (state: AppState): AppState => {
     }
     
     if (safeState.loan.repayment < 0) safeState.loan.repayment = 0;
+
+    // Sanitize Incomes
+    safeState.incomes = (safeState.incomes || []).map(inc => ({
+        ...inc,
+        amount: ensureFinite(inc.amount, 0)
+    }));
+
+    // Sanitize Expenses
+    safeState.expenses = (safeState.expenses || []).map(exp => ({
+        ...exp,
+        amount: ensureFinite(exp.amount, 0)
+    }));
+
+    // Sanitize Other Debts
+    safeState.otherDebts = (safeState.otherDebts || []).map(debt => ({
+        ...debt,
+        amount: ensureFinite(debt.amount, 0),
+        interestRate: ensureFinite(debt.interestRate, 0),
+        repayment: ensureFinite(debt.repayment, 0),
+        remainingTerm: ensureFinite(debt.remainingTerm, 0)
+    }));
+
+    // Sanitize Investment Properties
+    safeState.investmentProperties = (safeState.investmentProperties || []).map(prop => ({
+        ...prop,
+        propertyValue: ensureFinite(prop.propertyValue, 0),
+        loanAmount: ensureFinite(prop.loanAmount, 0),
+        interestRate: ensureFinite(prop.interestRate, 0),
+        rentalIncome: ensureFinite(prop.rentalIncome, 0),
+        expenses: (prop.expenses || []).map(exp => ({
+            ...exp,
+            amount: ensureFinite(exp.amount, 0)
+        }))
+    }));
+
+    // Other Global Values
+    safeState.crownMoneyInterestRate = ensureFinite(safeState.crownMoneyInterestRate, 6.5);
+    safeState.investmentAmountPercentage = ensureFinite(safeState.investmentAmountPercentage, 100);
+    safeState.investmentGrowthRate = ensureFinite(safeState.investmentGrowthRate, 7);
+    safeState.idealRetirementAge = ensureFinite(safeState.idealRetirementAge, 65);
+    safeState.propertyGrowthRate = ensureFinite(safeState.propertyGrowthRate, 3);
+    safeState.numberOfKids = ensureFinite(safeState.numberOfKids, 0);
+    safeState.debtRecyclingInvestmentRate = ensureFinite(safeState.debtRecyclingInvestmentRate, 8);
+    safeState.debtRecyclingLoanInterestRate = ensureFinite(safeState.debtRecyclingLoanInterestRate, 6.5);
+    safeState.marginalTaxRate = ensureFinite(safeState.marginalTaxRate, 32.5);
+    safeState.debtRecyclingPercentage = ensureFinite(safeState.debtRecyclingPercentage, 100);
+
     if (!safeState.investmentCashflowScenario) {
         safeState.investmentCashflowScenario = 'crown';
     }
@@ -272,6 +336,21 @@ const App: React.FC = () => {
   const [infoToast, setInfoToast] = useState('');
   const [warningToast, setWarningToast] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isGoogleAuth, setIsGoogleAuth] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        setIsGoogleAuth(true);
+      } else {
+        const isSessionAuth = sessionStorage.getItem('isAuthenticated') === 'true';
+        setIsAuthenticated(isSessionAuth);
+        setIsGoogleAuth(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
@@ -546,8 +625,19 @@ const App: React.FC = () => {
   const APP_PASSWORD = 'Crown';
 
   const handleLoginSuccess = () => {
-    try { sessionStorage.setItem('isAuthenticated', 'true'); setIsAuthenticated(true); } 
-    catch (error) { console.error("Could not write to session storage:", error); setIsAuthenticated(true); }
+    try { 
+      sessionStorage.setItem('isAuthenticated', 'true'); 
+      setIsAuthenticated(true); 
+    } 
+    catch (error) { 
+      console.error("Could not write to session storage:", error); 
+      setIsAuthenticated(true); 
+    }
+  };
+
+  const handleLoadFromSidebar = (data: AppState) => {
+    setAppState(data);
+    setInfoToast('Scenario loaded successfully!');
   };
 
   if (!isAuthenticated) return <LoginScreen onLoginSuccess={handleLoginSuccess} correctPassword={APP_PASSWORD} />;
@@ -555,8 +645,11 @@ const App: React.FC = () => {
   const currentTabLabel = tabs.find(t => t.id === activeTab)?.label || 'General';
 
   return (
-    <div className="min-h-screen text-[var(--text-color)] font-sans p-4 sm:p-8 print:p-4 print:bg-white print:text-black">
-      <style>{`
+    <div className="min-h-screen text-[var(--text-color)] font-sans print:p-4 print:bg-white print:text-black flex">
+      <Sidebar appState={appState} setAppState={setAppState} onLoadScenario={handleLoadFromSidebar} />
+      
+      <div className="flex-1 p-4 sm:p-8 transition-all duration-300">
+        <style>{`
         @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .app-header, .app-nav, .no-print { display: none !important; }
@@ -724,6 +817,7 @@ const App: React.FC = () => {
       </Modal>
       
       <Notepad isOpen={isNotepadOpen} onClose={() => setIsNotepadOpen(false)} content={appState.notepadContent} setContent={(newContent) => setAppState(prev => ({...prev, notepadContent: newContent}))} />
+      </div>
     </div>
   );
 };

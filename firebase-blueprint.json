@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "settings": { "type": "object" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Scenario": {
+      "title": "Financial Scenario",
+      "description": "A saved financial scenario",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "data": { "type": "object" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "folderId": { "type": "string" },
+        "isDeleted": { "type": "boolean" },
+        "deletedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ownerUid": { "type": "string" },
+        "sharedWith": { "type": "array", "items": { "type": "string" } },
+        "isFavorite": { "type": "boolean" }
+      },
+      "required": ["id", "name", "data", "ownerUid"]
+    },
+    "Folder": {
+      "title": "Scenario Folder",
+      "description": "A folder to organize scenarios",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "ownerUid"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/scenarios/{scenarioId}": {
+      "schema": "Scenario",
+      "description": "User's private scenarios"
+    },
+    "/users/{userId}/folders/{folderId}": {
+      "schema": "Folder",
+      "description": "User's folders"
+    }
+  }
+}

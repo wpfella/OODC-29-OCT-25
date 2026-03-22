@@ -1,0 +1,21 @@
+    "node_modules/@esbuild/linux-x64": {
+      "version": "0.25.12",
+      "cpu": [
+        "x64"
+      ],
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=18"
+      }
+    },
+    "node_modules/@google/genai": {
+      "version": "1.43.0",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "google-auth-library": "^10.3.0",
+        "p-retry": "^4.6.2",
+        "protobufjs": "^7.5.4",

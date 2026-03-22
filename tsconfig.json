@@ -25,5 +25,8 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src/**/*", "index.tsx"],
+  "exclude": ["node_modules", "dist", "vite.config.ts"],
+  "references": [{ "path": "./tsconfig.node.json" }]
 }

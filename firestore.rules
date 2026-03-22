@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{uid}
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - displayName: string (optional)
+    //   - email: string (required, immutable)
+    //   - photoURL: string (optional)
+    //   - settings: map (optional)
+    //
+    // Collection: /users/{uid}/scenarios/{scenarioId}
+    // Document ID: scenarioId
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - name: string (required, max 100 chars)
+    //   - data: map (required)
+    //   - tags: list (optional, max 10 items)
+    //   - folderId: string (optional)
+    //   - isDeleted: bool (required)
+    //   - deletedAt: string (optional, ISO8601)
+    //   - createdAt: string (required, immutable, ISO8601)
+    //   - updatedAt: string (required, ISO8601)
+    //   - ownerUid: string (required, immutable)
+    //   - sharedWith: list (optional, list of emails)
+    //
+    // Collection: /users/{uid}/folders/{folderId}
+    // Document ID: folderId
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - name: string (required, max 50 chars)
+    //   - ownerUid: string (required, immutable)
+    //   - createdAt: string (required, immutable, ISO8601)
+    //
+    // Collection: /shared_scenarios/{scenarioId}
+    // Document ID: scenarioId
+    // Fields:
+    //   - [Same as Scenario]
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('role' in data) || data.role in ['admin', 'user']);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "chetanmashru@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidScenario(data) {
+      return hasRequiredFields(['id', 'name', 'data', 'isDeleted', 'createdAt', 'updatedAt', 'ownerUid']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.data is map &&
+             data.isDeleted is bool &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt) &&
+             data.ownerUid is string && data.ownerUid == request.auth.uid &&
+             (!('isFavorite' in data) || data.isFavorite is bool);
+    }
+
+    function isValidFolder(data) {
+      return hasRequiredFields(['id', 'name', 'ownerUid', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.ownerUid is string && data.ownerUid == request.auth.uid &&
+             isValidDateString(data.createdAt);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || isAdmin());
+      allow update: if (isOwner(uid) || isAdmin()) && isValidUser(request.resource.data) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email &&
+                      (request.resource.data.role == resource.data.role || isAdmin());
+
+      match /scenarios/{scenarioId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidScenario(request.resource.data);
+        allow update: if isOwner(uid) && isValidScenario(request.resource.data) &&
+                        request.resource.data.id == resource.data.id &&
+                        request.resource.data.createdAt == resource.data.createdAt &&
+                        request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isOwner(uid);
+      }
+
+      match /folders/{folderId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidFolder(request.resource.data);
+        allow update: if isOwner(uid) && isValidFolder(request.resource.data) &&
+                        request.resource.data.id == resource.data.id &&
+                        request.resource.data.createdAt == resource.data.createdAt &&
+                        request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    match /shared_scenarios/{scenarioId} {
+      // Allow read if the user's email is in the sharedWith list
+      allow read: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        request.auth.token.email in resource.data.sharedWith
+      );
+      allow create: if isAuthenticated() && isValidScenario(request.resource.data);
+      allow update: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        request.auth.token.email in resource.data.sharedWith
+      ) && isValidScenario(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}

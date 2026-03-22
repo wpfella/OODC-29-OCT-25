@@ -22,7 +22,7 @@ const formatCurrency = (value: number, digits = 0) => {
 const generateAssistantContext = (appState: AppState, calculations: any, activeTab: string): string => {
     const { 
         loan, people, investmentProperties, idealRetirementAge, payoffStrategy,
-        crownMoneyInterestRate, otherDebts
+        crownMoneyInterestRate, otherDebts, incomes, expenses
     } = appState;
     const { 
         bankLoanCalculation, 
@@ -30,13 +30,19 @@ const generateAssistantContext = (appState: AppState, calculations: any, activeT
         investmentLoanCalculations,
         otherDebtsStatusQuoInterest,
         totalMonthlyIncome,
+        totalMonthlyExpenses,
         surplus,
+        totalInitialDebt,
+        totalInitialPropertyValues,
+        initialLVR
     } = calculations;
 
     const assetBreakdown = investmentLoanCalculations.investmentPayoffSchedule.map((inv: any) => {
         const prop = investmentProperties.find(p => p.id === inv.propertyId);
         return {
             address: prop?.address || 'Unknown',
+            value: formatCurrency(prop?.propertyValue || 0),
+            loan: formatCurrency(prop?.loanAmount || 0),
             interestSaved: formatCurrency(inv.bank.totalInterest - inv.crown.totalInterest),
             yearsSaved: `${(inv.bank.termInYears - inv.crown.termInYears).toFixed(1)} years`
         };
@@ -44,17 +50,30 @@ const generateAssistantContext = (appState: AppState, calculations: any, activeT
 
     const summary = {
         currentTab: activeTab,
+        borrowers: people.map(p => `${p.name} (Age: ${p.age})`),
         primaryLoan: {
+            amount: formatCurrency(loan.amount),
+            interestRate: `${loan.interestRate}%`,
+            repayment: `${formatCurrency(loan.repayment)} ${loan.frequency}`,
+            offset: formatCurrency(loan.offsetBalance || 0),
+            lvr: `${initialLVR.toFixed(1)}%`,
             mortgageInterestSaved: formatCurrency(bankLoanCalculation.totalInterest - (crownMoneyLoanCalculation.totalInterest - otherDebtsStatusQuoInterest)),
             consolidationInterestSaved: formatCurrency(otherDebtsStatusQuoInterest),
             totalSavings: formatCurrency(bankLoanCalculation.totalInterest + otherDebtsStatusQuoInterest - crownMoneyLoanCalculation.totalInterest),
             bankYears: bankLoanCalculation.termInYears.toFixed(1),
             crownYears: crownMoneyLoanCalculation.termInYears.toFixed(1)
         },
-        consolidatedDebtsCount: otherDebts.length,
+        consolidatedDebts: otherDebts.map(d => ({
+            name: d.name,
+            amount: formatCurrency(d.amount),
+            rate: `${d.interestRate}%`,
+            repayment: `${formatCurrency(d.repayment)} ${d.frequency}`
+        })),
+        totalInitialDebt: formatCurrency(totalInitialDebt),
         portfolioBreakdown: assetBreakdown,
         budget: {
             monthlyIncome: formatCurrency(totalMonthlyIncome),
+            monthlyExpenses: formatCurrency(totalMonthlyExpenses),
             monthlySurplus: formatCurrency(surplus)
         },
         strategy: payoffStrategy,

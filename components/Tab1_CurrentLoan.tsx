@@ -4,6 +4,7 @@ import { AppState, OtherDebt, Frequency } from '../types';
 import Card from './common/Card';
 import SliderInput from './common/SliderInput';
 import EditableField from './common/EditableField';
+import { X } from 'lucide-react';
 import { UsersIcon, BanknotesIcon, ChartBarIcon, InfoIcon, PercentIcon } from './common/IconComponents';
 import Tooltip from './common/Tooltip';
 import { calculatePIPayment, calculateIOPayment } from '../hooks/useMortgageCalculations';
@@ -43,61 +44,90 @@ const DebtConsolidationSection: React.FC<Props> = ({ appState, setAppState }) =>
         setAppState(prev => ({ ...prev, otherDebts: (prev.otherDebts || []).filter(debt => debt.id !== id) }));
     };
 
+    const totalConsolidatedDebt = (otherDebts || []).reduce((sum, d) => sum + d.amount, 0);
+    const weightedAverageRate = totalConsolidatedDebt > 0 
+        ? (otherDebts || []).reduce((sum, d) => sum + (d.interestRate * d.amount), 0) / totalConsolidatedDebt
+        : 0;
+
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+    };
+
     const inputClasses = "w-full bg-[var(--input-bg-color)] p-2 rounded-md border border-[var(--input-border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)]";
     const selectClasses = `custom-select ${inputClasses}`;
 
     return (
         <Card title={
-            <div className="flex items-center gap-2">
-                <span>Do you have any other debts you want to consolidate with Crown Money?</span>
-                <Tooltip text="Add any other debts you wish to consolidate into the Crown Money scenario. This will have NO IMPACT on the Bank scenario or the Loan Summary on this page.">
-                    <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-                </Tooltip>
+            <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                    <span>Other Debts to Consolidate</span>
+                    <Tooltip text="Add any other debts you wish to consolidate into the Crown Money scenario. This will have NO IMPACT on the Bank scenario or the Loan Summary on this page.">
+                        <InfoIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
+                    </Tooltip>
+                </div>
+                {totalConsolidatedDebt > 0 && (
+                    <div className="text-xs font-bold text-[var(--title-color)] bg-[var(--color-surplus-bg)] px-2 py-1 rounded-full">
+                        Total: {formatCurrency(totalConsolidatedDebt)} @ {weightedAverageRate.toFixed(1)}%
+                    </div>
+                )}
             </div>
         }>
             <div className="space-y-4">
-                {(otherDebts || []).map(debt => (
-                    <div key={debt.id} className="p-4 bg-black/10 dark:bg-white/5 rounded-lg relative space-y-4">
-                        <button onClick={() => removeDebt(debt.id)} className="absolute top-2 right-2 text-red-400 hover:text-red-600 text-2xl font-bold z-10">×</button>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Debt Name</label>
-                                <input type="text" value={debt.name} onChange={e => handleDebtChange(debt.id, 'name', e.target.value)} className={inputClasses} placeholder="e.g., Car Loan"/>
-                            </div>
-                             <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Amount Owing</label>
-                                <input type="number" value={debt.amount} onChange={e => handleDebtChange(debt.id, 'amount', parseFloat(e.target.value) || 0)} className={inputClasses} placeholder="Amount"/>
-                            </div>
-                        </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Interest Rate (%)</label>
-                                <input type="number" value={debt.interestRate} onChange={e => handleDebtChange(debt.id, 'interestRate', parseFloat(e.target.value) || 0)} className={inputClasses}/>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Remaining Term (Years)</label>
-                                <input type="number" value={debt.remainingTerm} onChange={e => handleDebtChange(debt.id, 'remainingTerm', parseFloat(e.target.value) || 0)} className={inputClasses}/>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Repayment</label>
-                                <input type="number" value={debt.repayment} onChange={e => handleDebtChange(debt.id, 'repayment', parseFloat(e.target.value) || 0)} className={inputClasses}/>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">Frequency</label>
-                                <select value={debt.frequency} onChange={e => handleDebtChange(debt.id, 'frequency', e.target.value)} className={selectClasses}>
-                                    <option value="weekly">Weekly</option>
-                                    <option value="fortnightly">Fortnightly</option>
-                                    <option value="monthly">Monthly</option>
-                                    <option value="quarterly">Quarterly</option>
-                                    <option value="annually">Annually</option>
-                                </select>
-                            </div>
-                        </div>
+                {(otherDebts || []).length === 0 ? (
+                    <div className="text-center py-6 border-2 border-dashed border-[var(--border-color)] rounded-xl opacity-60">
+                        <p className="text-sm">No other debts added yet.</p>
+                        <button onClick={addDebt} className="mt-2 text-xs font-bold text-[var(--title-color)] hover:underline">+ Add First Debt</button>
                     </div>
-                ))}
-                <button onClick={addDebt} className="mt-2 text-sm text-[var(--title-color)] hover:opacity-80 transition-opacity font-semibold">+ Add Debt</button>
+                ) : (
+                    <>
+                        {(otherDebts || []).map(debt => (
+                            <div key={debt.id} className="p-4 bg-black/5 dark:bg-white/5 rounded-xl border border-[var(--border-color)] relative space-y-4 transition-all hover:shadow-sm">
+                                <button onClick={() => removeDebt(debt.id)} className="absolute top-2 right-2 text-[var(--text-color-muted)] hover:text-red-500 transition-colors p-1">
+                                    <X className="h-5 w-5" />
+                                </button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Debt Name</label>
+                                        <input type="text" value={debt.name} onChange={e => handleDebtChange(debt.id, 'name', e.target.value)} className={inputClasses} placeholder="e.g., Car Loan"/>
+                                    </div>
+                                     <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Amount Owing</label>
+                                        <input type="number" value={debt.amount} onChange={e => handleDebtChange(debt.id, 'amount', parseFloat(e.target.value) || 0)} className={inputClasses} placeholder="Amount"/>
+                                    </div>
+                                </div>
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Interest Rate (%)</label>
+                                        <input type="number" value={debt.interestRate} onChange={e => handleDebtChange(debt.id, 'interestRate', parseFloat(e.target.value) || 0)} className={inputClasses}/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Remaining Term (Years)</label>
+                                        <input type="number" value={debt.remainingTerm} onChange={e => handleDebtChange(debt.id, 'remainingTerm', parseFloat(e.target.value) || 0)} className={inputClasses}/>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                   <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Repayment</label>
+                                        <input type="number" value={debt.repayment} onChange={e => handleDebtChange(debt.id, 'repayment', parseFloat(e.target.value) || 0)} className={inputClasses}/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-color-muted)] mb-1">Frequency</label>
+                                        <select value={debt.frequency} onChange={e => handleDebtChange(debt.id, 'frequency', e.target.value)} className={selectClasses}>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="fortnightly">Fortnightly</option>
+                                            <option value="monthly">Monthly</option>
+                                            <option value="quarterly">Quarterly</option>
+                                            <option value="annually">Annually</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        <button onClick={addDebt} className="w-full py-2 border-2 border-dashed border-[var(--border-color)] rounded-xl text-xs font-bold text-[var(--text-color-muted)] hover:border-[var(--title-color)] hover:text-[var(--title-color)] transition-all">
+                            + Add Another Debt
+                        </button>
+                    </>
+                )}
             </div>
         </Card>
     );

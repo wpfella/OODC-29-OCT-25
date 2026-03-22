@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --bg-color: #F8F8F8;
+  --text-color: #250B40;
+  --text-color-muted: #583d77;
+  --card-bg-color: #ffffff;
+  --input-bg-color: #ffffff;
+  --border-color: #E6DEEE;
+  --input-border-color: #d9cde5;
+  --input-border-focus-color: #5B21B6;
+  --title-color: #5B21B6;
+  --button-bg-color: #5B21B6;
+  --button-bg-hover-color: #4c1d95;
+  --slider-track-color: #E6DEEE;
+  --tooltip-bg-color: #250B40;
+  --tooltip-text-color: #FFFFFF;
+  --tooltip-text-color-muted: #E6DEEE;
+  --tooltip-text-color-positive: #86efac;
+  --tooltip-text-color-negative: #fb7185;
+  --chart-color-bank: #9ca3af;
+  --chart-color-crown: #5B21B6;
+  --chart-color-interest: #ec4899;
+  --chart-color-principal: #3b82f6;
+  --chart-color-wealth: #10b981;
+  --color-positive-bg: #ecfdf5;
+  --color-positive-text: #065f46;
+  --color-negative-bg: #fef2f2;
+  --color-negative-text: #991b1b;
+  --color-surplus-bg: #eef2ff;
+  --color-surplus-text: #312e81;
+  --color-wealth-bg-gradient: linear-gradient(to right, #f5f3ff, #ede9fe);
+  --date-picker-filter: invert(0);
+  --date-picker-color-scheme: light;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.trust-logo {
+  filter: grayscale(100%) opacity(0.6);
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.trust-logo:hover {
+  filter: grayscale(0%) opacity(1);
+}
+
+.custom-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23583d77'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.active-tab-content {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+}

@@ -1,59 +1,72 @@
-import React, { useState, useEffect } from 'react';
-import { PencilIcon } from './IconComponents';
+
+import React, { useState, useEffect, useRef } from 'react';
 
 interface EditableFieldProps {
   value: string | number;
-  onSave: (newValue: string) => void;
+  onSave: (value: string) => void;
+  label?: string;
   className?: string;
-  inputClassName?: string;
-  valueClassName?: string;
-  label: string;
+  type?: string;
+  placeholder?: string;
 }
 
-const EditableField: React.FC<EditableFieldProps> = ({ value, onSave, className, inputClassName, valueClassName, label }) => {
+const EditableField: React.FC<EditableFieldProps> = ({
+  value,
+  onSave,
+  label,
+  className = '',
+  type = 'text',
+  placeholder = ''
+}) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [currentValue, setCurrentValue] = useState(String(value));
+  const [inputValue, setInputValue] = useState(String(value));
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setCurrentValue(String(value));
+    setInputValue(String(value));
   }, [value]);
 
-  const handleSave = () => {
-    onSave(currentValue);
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleBlur = () => {
     setIsEditing(false);
+    onSave(inputValue);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSave();
-    } else if (e.key === 'Escape') {
-      setCurrentValue(String(value));
       setIsEditing(false);
+      onSave(inputValue);
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setInputValue(String(value));
     }
   };
 
   return (
-    <div className={`relative group ${className}`}>
-      <label className="block text-xs font-medium text-[var(--text-color-muted)] print:text-gray-500">{label}</label>
+    <div className={`editable-field ${className}`}>
+      {label && <label className="block text-xs font-medium text-[var(--text-color-muted)] mb-1">{label}</label>}
       {isEditing ? (
         <input
-          type="text"
-          value={currentValue}
-          onChange={(e) => setCurrentValue(e.target.value)}
-          onBlur={handleSave}
+          ref={inputRef}
+          type={type}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          autoFocus
-          className={`w-full bg-[var(--input-bg-color)] text-[var(--text-color)] p-1 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--input-border-focus-color)] print:hidden ${inputClassName}`}
+          placeholder={placeholder}
+          className="w-full bg-[var(--input-bg-color)] p-1 rounded border border-[var(--input-border-color)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--title-color)]"
         />
       ) : (
-        <div className="flex items-center gap-2" onClick={() => setIsEditing(true)}>
-            <span className={`cursor-pointer hover:bg-white/10 p-1 rounded-md transition print:hidden ${valueClassName}`}>
-              {value}
-            </span>
-             <span className="print:hidden opacity-40 group-hover:opacity-100 transition-opacity">
-                <PencilIcon className="h-4 w-4 text-[var(--text-color-muted)]"/>
-            </span>
-            <span className={`hidden print:block ${valueClassName}`}>{value}</span>
+        <div
+          onClick={() => setIsEditing(true)}
+          className="cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 p-1 rounded transition-colors text-sm min-h-[1.5rem]"
+        >
+          {value || <span className="text-[var(--text-color-muted)] italic">{placeholder || 'Click to edit'}</span>}
         </div>
       )}
     </div>
